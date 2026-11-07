@@ -175,6 +175,19 @@ body {
   border-right: 0;
 }
 
+/* The crown: the engraved bearded man (300 x 534), rising from the pole into the header, the
+   header's rule broken around him. */
+.pole-crown {
+  position: relative;
+  z-index: 2;
+  flex: none;
+  height: 19rem;
+  width: auto;
+  margin-top: -15rem;
+  padding: 0 1.6rem 0.8rem;
+  background: var(--wall);
+}
+
 .pole-cap {
   flex: none;
   width: 100%;

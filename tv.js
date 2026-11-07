@@ -134,6 +134,8 @@
 
   function pole() {
     var node = el('div', 'pole');
+    // The shop's mark crowns it: the engraved bearded man from the app, in the middle of the top.
+    node.appendChild(image('skull.png', 'pole-crown'));
     node.appendChild(el('div', 'pole-cap'));
     var glass = el('div', 'pole-glass');
     glass.appendChild(el('div', 'pole-bands'));
