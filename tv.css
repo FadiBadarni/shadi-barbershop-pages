@@ -1,7 +1,11 @@
-/* The shop's TV: today's queue, read from across the room. Landscape; every size is in rem, and
-   1rem is 1% of the screen's height, so the board fills any TV the same way. Colours are the app's
-   (apps/shadi/src/theme.ts): charcoal wall, chalk text, the printer's red for who is next, the
-   bottle green for a barber who is free. */
+/* The shop's TV: each barber's queue drawn as a track running into the chair. Distance on the track
+   is time: the edge of the chair is now, and every client sits as far from it as they are minutes
+   away, so the room sees who is next and how soon at a glance.
+
+   Landscape; 1rem is 1% of the screen's height, so the board fills any TV the same way. Physical
+   left/right throughout (the page is only ever right-to-left), for TV browsers too old for logical
+   properties. Colours are the app's (apps/shadi/src/theme.ts); the gold lives only in the Prime
+   Systems mark. */
 
 @font-face {
   font-family: "Firjar";
@@ -40,7 +44,7 @@
   --muted: #8a867e;
   --red: #c0362c;
   --green: #284a39;
-  /* Set by tv.js: smaller type when three or four barbers share the width. */
+  /* Set by tv.js: smaller type when three or four barbers share the height. */
   --k: 1;
 }
 
@@ -69,7 +73,7 @@ body {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  padding: 4rem 4.5vw 3rem;
+  padding: 3.4rem 4vw 0;
 }
 
 .num {
@@ -82,13 +86,12 @@ body {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 4rem;
-  padding-bottom: 2.4rem;
+  padding-bottom: 2rem;
   border-bottom: 0.3rem solid var(--chalk);
 }
 
 .shop {
-  font-size: 5.4rem;
+  font-size: 5rem;
   font-weight: 700;
   line-height: 1.3;
 }
@@ -96,193 +99,274 @@ body {
 .when {
   display: flex;
   align-items: baseline;
-  gap: 3rem;
 }
 
 .day {
-  font-size: 3.2rem;
+  margin-left: 3rem;
+  font-size: 3rem;
   color: var(--ash);
 }
 
 .clock {
-  font-size: 6.6rem;
+  font-size: 6.2rem;
   font-weight: 600;
   line-height: 1.1;
 }
 
-/* One column per barber, the first on the right. */
+/* One lane per barber: the chair on the right, the track running off to the left. */
 
-.cols {
+.lanes {
   flex: 1;
   min-height: 0;
   display: flex;
+  flex-direction: column;
 }
 
-.col {
+.lane {
   flex: 1 1 0;
-  min-width: 0;
+  min-height: 0;
+  display: flex;
+  padding: 2.6rem 0;
+}
+
+.lane + .lane {
+  border-top: 0.2rem solid var(--shade);
+}
+
+.chair {
+  flex: none;
+  width: 27vw;
   display: flex;
   flex-direction: column;
-  padding: 3.4rem 3vw 0;
-}
-
-.col:first-child {
-  padding-inline-start: 0;
-}
-
-.col:last-child {
-  padding-inline-end: 0;
-}
-
-.col + .col {
-  border-inline-start: 0.2rem solid var(--shade);
-}
-
-.barber {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 2rem;
+  padding-left: 2.4vw;
 }
 
 .barber-name {
-  font-size: calc(6.6rem * var(--k));
+  font-size: calc(7rem * var(--k));
   font-weight: 700;
-  line-height: 1.3;
+  line-height: 1.2;
+}
+
+.status {
+  margin-top: 0.8rem;
 }
 
 .free {
-  font-size: calc(3rem * var(--k));
+  display: inline-block;
+  font-size: calc(2.8rem * var(--k));
   color: var(--ash);
   white-space: nowrap;
 }
 
 .free.open {
-  padding: 0.5rem 1.8rem 0.9rem;
+  padding: 0.4rem 1.6rem 0.8rem;
   border-radius: 0.6rem;
   background: var(--green);
   color: var(--chalk);
   font-weight: 600;
 }
 
-/* Who is in the chair. */
-
-.chair {
-  display: flex;
-  align-items: baseline;
-  gap: 2.4rem;
-  margin-top: 2.6rem;
+.seat {
+  margin-top: auto;
   white-space: nowrap;
 }
 
-.chair-label {
-  font-size: calc(2.8rem * var(--k));
+.seat-label {
+  font-size: calc(2.6rem * var(--k));
   color: var(--ash);
 }
 
-.chair-name {
-  min-width: 0;
+.seat-name {
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: calc(4.6rem * var(--k));
+  font-size: calc(4.8rem * var(--k));
   font-weight: 500;
   line-height: 1.35;
 }
 
-.chair-until {
-  margin-inline-start: auto;
-  font-size: calc(2.8rem * var(--k));
+.seat-name.quiet {
   color: var(--muted);
 }
 
-.quiet {
+.seat-until {
+  font-size: calc(2.6rem * var(--k));
   color: var(--muted);
 }
 
-/* Who is next: the one thing the room is looking for. */
+/* A client who has just taken the chair slides in off the track. */
+.seat.arrive .seat-name {
+  animation: arrive 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
 
-.next {
-  margin-top: 2.6rem;
-  padding: 2.4rem 2.8rem 2.6rem;
-  border-inline-start: 0.9rem solid var(--red);
+@keyframes arrive {
+  from {
+    transform: translateX(-8rem);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* The track. Its right edge, in chalk, is the chair and now. */
+
+.track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  border-right: 0.4rem solid var(--chalk);
+}
+
+.block {
+  position: absolute;
+  top: 0;
+  bottom: 5.4rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 1.4rem 1.6rem 1.6rem;
+  border-radius: 0.4rem;
   background: var(--shade-low);
+  white-space: nowrap;
 }
 
-.next-head {
+/* What is left of the client in the chair: the time before the next one can sit. */
+.block.busy {
+  padding: 0;
+  background: var(--shade);
+}
+
+.block.next {
+  background: var(--red);
+}
+
+.block-when {
+  font-size: calc(2.6rem * var(--k));
+  color: var(--ash);
+}
+
+.block.next .block-when {
+  color: var(--chalk);
+  font-weight: 600;
+}
+
+.block-first {
+  margin-top: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: calc(5.6rem * var(--k));
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.block-rest {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: calc(3.4rem * var(--k));
+  color: var(--ash);
+  line-height: 1.35;
+}
+
+.block.next .block-rest {
+  color: var(--chalk);
+}
+
+/* The clock along the bottom of the track, every 20 minutes. */
+
+.tick {
+  position: absolute;
+  bottom: 0;
+  height: 4.6rem;
+  border-right: 0.2rem solid var(--shade);
+}
+
+.tick-time {
+  position: absolute;
+  bottom: 0.2rem;
+  right: 0.8rem;
+  font-size: calc(2.3rem * var(--k));
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Now, under the chair's edge. */
+.now-label {
+  position: absolute;
+  bottom: 0.2rem;
+  right: 0.8rem;
+  font-size: calc(2.3rem * var(--k));
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* How many more are waiting past the end of the track, over the clock at its far end. */
+.later-tag {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  height: 4.6rem;
+  padding: 0.4rem 0 0 1.4rem;
+  background: var(--wall);
+  font-size: calc(2.6rem * var(--k));
+  color: var(--ash);
+  white-space: nowrap;
+}
+
+.track-empty {
+  position: absolute;
+  top: 0;
+  bottom: 5.4rem;
+  right: 3rem;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-}
-
-.next-tag {
-  padding: 0.3rem 1.6rem 0.7rem;
-  border-radius: 0.5rem;
-  background: var(--red);
-  font-size: calc(2.8rem * var(--k));
-  font-weight: 600;
-}
-
-.next-time {
-  font-size: calc(4.6rem * var(--k));
-  font-weight: 600;
-}
-
-.next-name {
-  margin-top: 1rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: calc(8.2rem * var(--k));
-  font-weight: 700;
-  line-height: 1.35;
-}
-
-.next.none .next-name {
-  font-size: calc(4.6rem * var(--k));
-  font-weight: 500;
+  font-size: calc(3.4rem * var(--k));
   color: var(--muted);
 }
 
-/* The rest of the day, as many as fit; the remainder is counted. */
+/* The foot: a stale notice when there is one, and who made the screen. */
 
-.later {
-  flex: 1;
-  min-height: 0;
-  margin-top: 2.6rem;
-  overflow: hidden;
-  list-style: none;
-}
-
-.later li {
+.foot {
   display: flex;
-  align-items: baseline;
-  gap: 2.6rem;
-  padding: 1.1rem 0 1.5rem;
-  border-top: 0.15rem solid var(--shade);
-  white-space: nowrap;
+  align-items: center;
+  padding: 1.6rem 0 2.2rem;
+  border-top: 0.2rem solid var(--shade);
 }
 
-.later-time {
-  font-size: calc(3.2rem * var(--k));
+.stale {
+  font-size: 2.4rem;
+  color: var(--muted);
+}
+
+.sig {
+  display: flex;
+  align-items: center;
+  margin-right: auto;
+}
+
+.sig img {
+  height: 3.6rem;
+  width: auto;
+  margin-left: 1.4rem;
+}
+
+.sig-name {
+  font-size: 2.8rem;
+  font-weight: 700;
+}
+
+.sig-line {
+  margin-right: 2rem;
+  font-size: 2.4rem;
   color: var(--ash);
 }
 
-.later-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: calc(3.8rem * var(--k));
-}
-
-.later .more {
-  font-size: calc(3rem * var(--k));
-  color: var(--muted);
-}
-
-/* Shown only when the board has not been refreshed for a while. */
-
-.stale {
-  padding-top: 1.6rem;
+.sig-site {
+  margin-right: 2rem;
   font-size: 2.4rem;
   color: var(--muted);
+  direction: ltr;
+  unicode-bidi: embed;
 }

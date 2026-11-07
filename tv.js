@@ -3,28 +3,49 @@
 // today's bookings that have not ended. For now it draws sample data; linking a screen and reading
 // the shop's real board come next.
 //
+// Each barber is a lane: the chair on the right, and a track running off to the left on which every
+// client sits as far from the chair as they are minutes away. The track's right edge is now.
+//
 // Written for TV browsers, which can be years old: no optional chaining, no newer syntax.
 (function () {
   'use strict';
 
+  // How far ahead the track looks, in minutes.
+  var WINDOW_MINUTES = 100;
+  var TICK_MINUTES = 20;
+  var MINUTE = 60 * 1000;
+
   var COPY = {
-    now: 'الآن',
-    until: 'حتى',
+    inChair: 'على الكرسي',
     chairEmpty: 'الكرسي فارغ',
-    next: 'التالي',
-    nobodyWaiting: 'لا أحد في الانتظار',
+    until: 'حتى',
     freeNow: 'متاح الآن',
     freeAt: 'أقرب موعد',
     noFree: 'لا مواعيد متاحة اليوم',
-    more: function (n) { return 'و' + n + ' آخرون'; },
-    updated: 'آخر تحديث'
+    nobodyWaiting: 'لا أحد في الانتظار',
+    startsNow: 'الآن',
+    inMinutes: function (n) { return 'بعد ' + minutesAr(n); },
+    later: function (n) { return 'و' + n + ' آخرون لاحقًا'; },
+    updated: 'آخر تحديث',
+    maker: 'برايم سيستمز',
+    makerLine: 'نبني المواقع والتطبيقات التي يقوم عليها عملك',
+    makerSite: 'prime-systems.co.il'
   };
 
-  // The board, the server's clock minus this screen's (screen clocks drift), and when it was read.
+  // As the app counts minutes (private.minutes_ar): دقيقة, دقيقتين, 3–10 دقائق, 11 and up دقيقة.
+  function minutesAr(n) {
+    if (n === 1) return 'دقيقة';
+    if (n === 2) return 'دقيقتين';
+    if (n >= 3 && n <= 10) return n + ' دقائق';
+    return n + ' دقيقة';
+  }
+
+  // The board, the server's clock minus this screen's (screen clocks drift), when it was read, and
+  // who sat in each chair at the last drawing.
   var board = null;
   var offset = 0;
   var readAt = 0;
-  var drawnKey = '';
+  var seated = null;
 
   function now() {
     return Date.now() + offset;
@@ -79,16 +100,31 @@
     return Date.parse(a.starts_at) - Date.parse(b.starts_at);
   }
 
+  // The first name on its own line, the rest under it; «عبد» and «أبو» stay with the word after.
+  function splitName(name) {
+    var words = String(name).trim().split(/\s+/);
+    var take = words.length > 1 && /^(عبد|أبو|ابو)$/.test(words[0]) ? 2 : 1;
+    return { first: words.slice(0, take).join(' '), rest: words.slice(take).join(' ') };
+  }
+
   function freeLine(barber, t) {
     var free = barber.next_free ? Date.parse(barber.next_free) : null;
-    if (free === null) return el('div', 'free', COPY.noFree);
-    if (free <= t) return el('div', 'free open', COPY.freeNow);
-    var line = el('div', 'free', COPY.freeAt + ' ');
+    if (free === null) return el('span', 'free', COPY.noFree);
+    if (free <= t) return el('span', 'free open', COPY.freeNow);
+    var line = el('span', 'free', COPY.freeAt + ' ');
     line.appendChild(el('span', 'num', time(free)));
     return line;
   }
 
-  function column(barber, t) {
+  // A block on the track, placed later by place(): from its start to its end, in minutes from now.
+  function block(className, startMs, endMs) {
+    var node = el('div', 'block ' + className);
+    node.setAttribute('data-start', String(startMs));
+    node.setAttribute('data-end', String(endMs));
+    return node;
+  }
+
+  function lane(barber, t, arrivals) {
     var mine = board.bookings.filter(function (b) {
       return b.barber_id === barber.id && Date.parse(b.ends_at) > t;
     }).sort(byStart);
@@ -99,70 +135,126 @@
       else upcoming.push(b);
     });
 
-    var col = el('section', 'col');
+    var row = el('section', 'lane');
 
-    var head = el('div', 'barber');
-    head.appendChild(el('h2', 'barber-name', barber.name));
-    head.appendChild(freeLine(barber, t));
-    col.appendChild(head);
-
+    // The chair.
     var chair = el('div', 'chair');
-    chair.appendChild(el('span', 'chair-label', COPY.now));
+    chair.appendChild(el('h2', 'barber-name', barber.name));
+    var status = el('div', 'status');
+    status.appendChild(freeLine(barber, t));
+    chair.appendChild(status);
+
+    var seatKey = current ? current.starts_at + '|' + current.name : '';
+    var seat = el('div', arrivals && seated && seated[barber.id] !== seatKey && current ? 'seat arrive' : 'seat');
+    arrivals[barber.id] = seatKey;
     if (current) {
-      chair.appendChild(el('span', 'chair-name', current.name));
-      chair.appendChild(el('span', 'chair-until num', COPY.until + ' ' + time(Date.parse(current.ends_at))));
+      seat.appendChild(el('div', 'seat-label', COPY.inChair));
+      seat.appendChild(el('div', 'seat-name', current.name));
+      seat.appendChild(el('div', 'seat-until num', COPY.until + ' ' + time(Date.parse(current.ends_at))));
     } else {
-      chair.appendChild(el('span', 'chair-name quiet', COPY.chairEmpty));
+      seat.appendChild(el('div', 'seat-name quiet', COPY.chairEmpty));
     }
-    col.appendChild(chair);
+    chair.appendChild(seat);
+    row.appendChild(chair);
 
-    var next = upcoming[0];
-    var nextBox = el('div', next ? 'next' : 'next none');
-    var nextHead = el('div', 'next-head');
-    nextHead.appendChild(el('span', 'next-tag', COPY.next));
-    if (next) nextHead.appendChild(el('span', 'next-time num', time(Date.parse(next.starts_at))));
-    nextBox.appendChild(nextHead);
-    nextBox.appendChild(el('div', 'next-name', next ? next.name : COPY.nobodyWaiting));
-    col.appendChild(nextBox);
-
-    var later = el('ol', 'later');
-    upcoming.slice(1).forEach(function (b) {
-      var row = el('li');
-      row.appendChild(el('span', 'later-time num', time(Date.parse(b.starts_at))));
-      row.appendChild(el('span', 'later-name', b.name));
-      later.appendChild(row);
-    });
-    col.appendChild(later);
-
-    return col;
-  }
-
-  // Drop the last rows that do not fit, and count them instead.
-  function fit(later) {
-    var hidden = 0;
-    var more = null;
-    while (later.scrollHeight > later.clientHeight + 1) {
-      var rows = later.querySelectorAll('li:not(.more)');
-      if (!rows.length) break;
-      later.removeChild(rows[rows.length - 1]);
-      hidden += 1;
-      if (!more) {
-        more = el('li', 'more');
-        later.appendChild(more);
+    // The track.
+    var track = el('div', 'track');
+    if (current) track.appendChild(block('busy', t, Date.parse(current.ends_at)));
+    upcoming.forEach(function (b, i) {
+      var start = Date.parse(b.starts_at);
+      var node = block(i === 0 ? 'next' : '', start, Date.parse(b.ends_at));
+      // The next one counts down; the rest are timed by the clock under the track.
+      if (i === 0) {
+        var minutes = Math.ceil((start - t) / MINUTE);
+        node.appendChild(el('div', 'block-when num', minutes <= 0 ? COPY.startsNow : COPY.inMinutes(minutes)));
       }
-      more.textContent = COPY.more(hidden);
+      var name = splitName(b.name);
+      node.appendChild(el('div', 'block-first', name.first));
+      if (name.rest) node.appendChild(el('div', 'block-rest', name.rest));
+      track.appendChild(node);
+    });
+
+    var tick = Math.ceil(t / (TICK_MINUTES * MINUTE)) * TICK_MINUTES * MINUTE;
+    for (; tick <= t + WINDOW_MINUTES * MINUTE; tick += TICK_MINUTES * MINUTE) {
+      var mark = el('div', 'tick');
+      mark.setAttribute('data-at', String(tick));
+      mark.appendChild(el('span', 'tick-time num', time(tick)));
+      track.appendChild(mark);
+    }
+
+    track.appendChild(el('div', 'now-label', COPY.startsNow));
+    if (!current && !upcoming.length) track.appendChild(el('div', 'track-empty', COPY.nobodyWaiting));
+    row.appendChild(track);
+    return row;
+  }
+
+  // Lay each block and tick at its distance from the chair, now that the track has a width.
+  function place(track, t) {
+    var width = track.clientWidth;
+    var perMinute = width / WINDOW_MINUTES;
+    var gap = window.innerHeight * 0.008;
+    var beyond = 0;
+
+    Array.prototype.forEach.call(track.querySelectorAll('.block'), function (node) {
+      var from = (Number(node.getAttribute('data-start')) - t) / MINUTE * perMinute;
+      var to = (Number(node.getAttribute('data-end')) - t) / MINUTE * perMinute;
+      if (from >= width) {
+        track.removeChild(node);
+        beyond += 1;
+        return;
+      }
+      node.style.right = from + 'px';
+      node.style.width = Math.max(to - from - gap, 0) + 'px';
+    });
+
+    // A tick too close to the chair would sit on the «الآن» under it.
+    Array.prototype.forEach.call(track.querySelectorAll('.tick'), function (node) {
+      var at = (Number(node.getAttribute('data-at')) - t) / MINUTE;
+      if (at < 8) track.removeChild(node);
+      else node.style.right = at * perMinute + 'px';
+    });
+
+    // The count of those past the end takes the far end of the clock, and the ticks under it go.
+    if (beyond) {
+      var tag = el('div', 'later-tag', COPY.later(beyond));
+      track.appendChild(tag);
+      var clear = width - tag.offsetWidth - window.innerHeight * 0.08;
+      Array.prototype.forEach.call(track.querySelectorAll('.tick'), function (node) {
+        if (parseFloat(node.style.right) > clear) track.removeChild(node);
+      });
+    }
+
+    // Long names shrink, down to a little over half size, before they are cut.
+    Array.prototype.forEach.call(track.querySelectorAll('.block-first, .block-rest'), shrink);
+  }
+
+  function shrink(node) {
+    var size = parseFloat(window.getComputedStyle(node).fontSize);
+    var least = size * 0.55;
+    while (node.scrollWidth > node.clientWidth && size > least) {
+      size -= 1;
+      node.style.fontSize = size + 'px';
     }
   }
 
-  function draw(force) {
+  function signature() {
+    var sig = el('div', 'sig');
+    var mark = el('img');
+    mark.src = 'prime-logo.svg';
+    mark.alt = '';
+    sig.appendChild(mark);
+    sig.appendChild(el('span', 'sig-name', COPY.maker));
+    sig.appendChild(el('span', 'sig-line', COPY.makerLine));
+    sig.appendChild(el('span', 'sig-site', COPY.makerSite));
+    return sig;
+  }
+
+  function draw() {
     if (!board) return;
     var t = now();
-    var key = time(t) + '|' + readAt + '|' + window.innerWidth + 'x' + window.innerHeight;
-    if (!force && key === drawnKey) return;
-    drawnKey = key;
 
     var count = board.barbers.length;
-    document.documentElement.style.setProperty('--k', count <= 2 ? '1' : count === 3 ? '0.82' : '0.7');
+    document.documentElement.style.setProperty('--k', count <= 2 ? '1' : count === 3 ? '0.8' : '0.66');
 
     var root = document.getElementById('board');
     root.textContent = '';
@@ -175,28 +267,33 @@
     top.appendChild(when);
     root.appendChild(top);
 
-    var cols = el('div', 'cols');
+    var arrivals = {};
+    var lanes = el('div', 'lanes');
     board.barbers.forEach(function (barber) {
-      cols.appendChild(column(barber, t));
+      lanes.appendChild(lane(barber, t, arrivals));
     });
-    root.appendChild(cols);
+    root.appendChild(lanes);
+    seated = arrivals;
 
+    var foot = el('footer', 'foot');
     // A board more than three minutes old says so, rather than pass old news off as current.
-    if (t - readAt > 3 * 60 * 1000) {
-      root.appendChild(el('div', 'stale num', COPY.updated + ' ' + time(readAt)));
-    }
+    if (t - readAt > 3 * MINUTE) foot.appendChild(el('span', 'stale num', COPY.updated + ' ' + time(readAt)));
+    foot.appendChild(signature());
+    root.appendChild(foot);
 
-    Array.prototype.forEach.call(root.querySelectorAll('.later'), fit);
+    Array.prototype.forEach.call(root.querySelectorAll('.track'), function (track) {
+      place(track, t);
+    });
   }
 
   // ---------------------------------------------------------------------------------------------
-  // Sample data, laid on the 20-minute grid around the current time
+  // Sample data, laid on the 20-minute grid around the time the page opened
   // ---------------------------------------------------------------------------------------------
 
+  var sampleStart = Math.floor(Date.now() / (20 * MINUTE)) * 20 * MINUTE;
+
   function sampleBoard() {
-    var slot = 20 * 60 * 1000;
-    var start = Math.floor(Date.now() / slot) * slot;
-    function at(k) { return new Date(start + k * slot).toISOString(); }
+    function at(k) { return new Date(sampleStart + k * 20 * MINUTE).toISOString(); }
     function booking(barber, k, name) {
       return { barber_id: barber, starts_at: at(k), ends_at: at(k + 1), name: name };
     }
@@ -211,7 +308,7 @@
         booking('shadi', 0, 'محمد خطيب'),
         booking('shadi', 1, 'يوسف حداد'),
         booking('shadi', 2, 'كريم منصور'),
-        booking('shadi', 3, 'سامي عودة'),
+        booking('shadi', 3, 'عبد الرحمن عودة'),
         booking('shadi', 4, 'باسل نصار'),
         booking('shadi', 5, 'علي حسن'),
         booking('shadi', 6, 'عمر سليمان'),
@@ -226,14 +323,13 @@
 
   function show(next) {
     board = next;
-    readAt = Date.now();
-    offset = Date.parse(next.now) - readAt;
-    readAt += offset;
-    draw(true);
+    offset = Date.parse(next.now) - Date.now();
+    readAt = now();
+    draw();
   }
 
   // ---------------------------------------------------------------------------------------------
-  // The screen: awake, full screen on OK, redrawn as the minute turns
+  // The screen: awake, full screen on OK, redrawn every few seconds as the queue moves
   // ---------------------------------------------------------------------------------------------
 
   function keepAwake() {
@@ -256,10 +352,11 @@
     if (e.key === 'Enter') fullScreen();
   });
 
-  window.addEventListener('resize', function () { draw(true); });
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { draw(true); });
+  window.addEventListener('resize', draw);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(draw);
 
   show(sampleBoard());
   keepAwake();
-  setInterval(function () { draw(false); }, 1000);
+  setInterval(draw, 10 * 1000);
+  setInterval(function () { show(sampleBoard()); }, 60 * 1000);
 })();
