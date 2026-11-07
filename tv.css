@@ -242,20 +242,29 @@ body {
   opacity: 0.45;
 }
 
-/* A barber, and whether they have time free: the head of the column, set on its own band so a
-   barber's name is never read as a client's. */
+/* A barber, and whether they have time free: the head of the column, over a heavy rule in the
+   barber's colour. Each barber takes one of the pole's colours, in turn (tv.js); his rule and his
+   «next» tag carry it, so his side of the screen is his. Above the rule is the barber, below it
+   his clients. Blue is too dark on the wall for text, so the colours never colour words. */
+
+.col {
+  --tint: var(--red);
+}
+
+.col.blue {
+  --tint: var(--blue);
+}
 
 .barber {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem 2.4rem 1.4rem;
-  border-radius: 0.8rem;
-  background: var(--shade);
+  padding-bottom: 1.4rem;
+  border-bottom: 0.7rem solid var(--tint);
 }
 
 .barber-name {
-  font-size: calc(5.6rem * var(--k));
+  font-size: calc(6.2rem * var(--k));
   font-weight: 700;
   line-height: 1.25;
 }
@@ -331,7 +340,7 @@ body {
 .poster-tag {
   padding: 0.3rem 1.8rem 0.8rem;
   border-radius: 0.5rem;
-  background: var(--red);
+  background: var(--tint);
   font-size: calc(3rem * var(--k));
   font-weight: 600;
 }

@@ -162,7 +162,8 @@
     ui.columns = {};
     var poleAfter = Math.ceil(board.barbers.length / 2) - 1;
     board.barbers.forEach(function (barber, i) {
-      var col = el('section', 'col');
+      // The pole's colours, in turn: red, blue, red...
+      var col = el('section', i % 2 ? 'col blue' : 'col');
       ui.columns[barber.id] = col;
       ui.cols.appendChild(col);
       if (i === poleAfter) ui.cols.appendChild(ui.pole.node);
