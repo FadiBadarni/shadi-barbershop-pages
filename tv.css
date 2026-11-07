@@ -479,5 +479,6 @@ body {
 .credit .site {
   direction: ltr;
   unicode-bidi: embed;
-  color: var(--muted);
+  font-weight: 700;
+  color: var(--chalk);
 }

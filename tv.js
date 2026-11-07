@@ -22,7 +22,7 @@
     freeAt: 'أقرب موعد',
     noFree: 'لا مواعيد متاحة اليوم',
     updated: 'آخر تحديث',
-    creditMade: 'تطبيق الحجز وهذه الشاشة من تطوير',
+    creditMade: 'تطبيق الحجز من تطوير',
     creditName: 'برايم سيستمز',
     creditLine: 'نبني المواقع والتطبيقات التي يقوم عليها عملك',
     creditSite: 'prime-systems.co.il'
