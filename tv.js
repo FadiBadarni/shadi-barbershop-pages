@@ -37,7 +37,8 @@
   var shownNow = null;
   var shownPlace = null;
 
-  // The page's fixed parts, built once so the credits strip never restarts.
+  // The page's lasting parts, built once (and the columns once per set of barbers), so the pole and
+  // the credits strip keep moving instead of starting over at every drawing.
   var ui = null;
 
   function now() {
@@ -79,7 +80,7 @@
   }
 
   // ---------------------------------------------------------------------------------------------
-  // The page's fixed parts
+  // The page's lasting parts
   // ---------------------------------------------------------------------------------------------
 
   function el(tag, className, text) {
@@ -89,13 +90,23 @@
     return node;
   }
 
+  function image(src, className) {
+    var node = el('img', className);
+    node.src = src;
+    node.alt = '';
+    return node;
+  }
+
   function build() {
     var root = document.getElementById('board');
     root.textContent = '';
 
     var top = el('header', 'top');
+    var brand = el('div', 'brand');
+    brand.appendChild(image('shop-mark.png'));
     var shop = el('h1', 'shop');
-    top.appendChild(shop);
+    brand.appendChild(shop);
+    top.appendChild(brand);
     var when = el('div', 'when');
     var stale = el('span', 'stale num');
     var dayNode = el('span', 'day num');
@@ -114,8 +125,38 @@
     band.appendChild(track);
     root.appendChild(band);
 
-    ui = { shop: shop, stale: stale, day: dayNode, clock: clock, cols: cols, band: band, track: track, barbers: '' };
+    ui = {
+      shop: shop, stale: stale, day: dayNode, clock: clock, cols: cols, band: band, track: track,
+      pole: pole(), columns: {}, barbers: null
+    };
     fillCredits();
+  }
+
+  function pole() {
+    var node = el('div', 'pole');
+    node.appendChild(el('div', 'pole-cap'));
+    var glass = el('div', 'pole-glass');
+    glass.appendChild(el('div', 'pole-bands'));
+    node.appendChild(glass);
+    node.appendChild(el('div', 'pole-cap'));
+    return node;
+  }
+
+  // One column per barber, the pole standing after the first half of them: between the two when
+  // there are two.
+  function layColumns() {
+    var key = board.barbers.map(function (b) { return b.id; }).join('|');
+    if (key === ui.barbers) return;
+    ui.barbers = key;
+    ui.cols.textContent = '';
+    ui.columns = {};
+    var poleAfter = Math.ceil(board.barbers.length / 2) - 1;
+    board.barbers.forEach(function (barber, i) {
+      var col = el('section', 'col');
+      ui.columns[barber.id] = col;
+      ui.cols.appendChild(col);
+      if (i === poleAfter) ui.cols.appendChild(ui.pole);
+    });
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -124,10 +165,7 @@
 
   function credit() {
     var item = el('span', 'credit');
-    var mark = el('img');
-    mark.src = 'prime-logo.svg';
-    mark.alt = '';
-    item.appendChild(mark);
+    item.appendChild(image('prime-logo.svg'));
     item.appendChild(el('span', '', COPY.creditMade));
     item.appendChild(el('strong', '', COPY.creditName));
     item.appendChild(el('span', 'sep', '·'));
@@ -165,6 +203,13 @@
     return b.barber_id + '|' + b.starts_at;
   }
 
+  // The first name, and the rest; «عبد» and «أبو» stay with the word after.
+  function splitName(name) {
+    var words = String(name).trim().split(/\s+/);
+    var take = words.length > 1 && /^(عبد|أبو|ابو)$/.test(words[0]) ? 2 : 1;
+    return { first: words.slice(0, take).join(' '), rest: words.slice(take).join(' ') };
+  }
+
   function freeLine(barber, t) {
     var free = barber.next_free ? Date.parse(barber.next_free) : null;
     if (free === null) return el('span', 'free', COPY.noFree);
@@ -174,7 +219,7 @@
     return line;
   }
 
-  function column(barber, t, nowShown, placeShown) {
+  function fillColumn(col, barber, t, nowShown, placeShown) {
     var mine = board.bookings.filter(function (b) {
       return b.barber_id === barber.id && Date.parse(b.ends_at) > t;
     }).sort(byStart);
@@ -185,7 +230,7 @@
       else waiting.push(b);
     });
 
-    var col = el('section', 'col');
+    col.textContent = '';
 
     var head = el('div', 'barber');
     head.appendChild(el('h2', 'barber-name', barber.name));
@@ -201,25 +246,37 @@
     nowRow.appendChild(current ? el('span', 'now-name', current.name) : el('span', 'now-name quiet', COPY.nobodyNow));
     col.appendChild(nowRow);
 
-    // The line, largest first. A client who moved up a place since the last drawing rises into it.
+    // The line: the next client as a poster, then each place a step smaller. A client who moved up
+    // a place since the last drawing rises into it.
     var line = el('ol', 'line');
     waiting.forEach(function (b, i) {
       var place = i + 1;
       var key = keyOf(b);
       placeShown[key] = place;
-      var stepped = shownPlace && shownPlace[key] && shownPlace[key] > place;
-      var row = el('li', 'place place-' + Math.min(place, 5) + (stepped ? ' advance' : ''));
-      var tag = el('div', 'place-tag');
-      tag.appendChild(el('span', '', COPY.next));
-      row.appendChild(tag);
-      row.appendChild(el('span', 'place-name', b.name));
-      row.appendChild(el('span', 'place-time num', time(Date.parse(b.starts_at))));
+      var stepped = shownPlace && shownPlace[key] && shownPlace[key] > place ? ' advance' : '';
+      var booked = time(Date.parse(b.starts_at));
+      var row;
+      if (place === 1) {
+        var name = splitName(b.name);
+        row = el('li', 'poster' + stepped);
+        var posterHead = el('div', 'poster-head');
+        posterHead.appendChild(el('span', 'poster-tag', COPY.next));
+        posterHead.appendChild(el('span', 'poster-time num', booked));
+        row.appendChild(posterHead);
+        row.appendChild(el('div', 'poster-first', name.first));
+        if (name.rest) row.appendChild(el('div', 'poster-rest', name.rest));
+      } else {
+        row = el('li', 'place place-' + Math.min(place, 5) + stepped);
+        row.appendChild(el('span', 'place-no num', String(place)));
+        row.appendChild(el('span', 'place-name', b.name));
+        row.appendChild(el('span', 'place-time num', booked));
+      }
       line.appendChild(row);
     });
     if (!waiting.length) line.appendChild(el('li', 'done', COPY.noMore));
     col.appendChild(line);
 
-    return col;
+    return Boolean(current || waiting.length || barber.next_free);
   }
 
   // Long names shrink, down to a little over half size, before they are cut.
@@ -238,7 +295,7 @@
     var more = null;
     while (line.scrollHeight > line.clientHeight + 1) {
       var rows = line.querySelectorAll('.place');
-      if (rows.length <= 1) break;
+      if (!rows.length) break;
       line.removeChild(rows[rows.length - 1]);
       hidden += 1;
       if (!more) {
@@ -267,16 +324,20 @@
     // A board more than three minutes old says so, rather than pass old news off as current.
     ui.stale.textContent = t - readAt > 3 * MINUTE ? COPY.updated + ' ' + time(readAt) : '';
 
+    layColumns();
     var nowShown = {};
     var placeShown = {};
-    ui.cols.textContent = '';
+    var open = false;
     board.barbers.forEach(function (barber) {
-      ui.cols.appendChild(column(barber, t, nowShown, placeShown));
+      if (fillColumn(ui.columns[barber.id], barber, t, nowShown, placeShown)) open = true;
     });
     shownNow = nowShown;
     shownPlace = placeShown;
 
-    Array.prototype.forEach.call(ui.cols.querySelectorAll('.now-name, .place-name'), shrink);
+    // The pole turns while anyone still has an appointment or a free time today.
+    ui.pole.className = open ? 'pole' : 'pole still';
+
+    Array.prototype.forEach.call(ui.cols.querySelectorAll('.now-name, .poster-first, .poster-rest, .place-name'), shrink);
     Array.prototype.forEach.call(ui.cols.querySelectorAll('.line'), fit);
   }
 
