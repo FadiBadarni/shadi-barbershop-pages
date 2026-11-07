@@ -136,12 +136,15 @@
     var node = el('div', 'pole');
     // The shop's mark crowns it: the engraved bearded man from the app, in the middle of the top.
     node.appendChild(image('skull.png', 'pole-crown'));
-    node.appendChild(el('div', 'pole-cap'));
-    var glass = el('div', 'pole-glass');
-    glass.appendChild(el('div', 'pole-bands'));
-    node.appendChild(glass);
-    node.appendChild(el('div', 'pole-cap'));
-    return node;
+    var body = el('div', 'pole-body');
+    var win = el('div', 'pole-window');
+    var drum = el('canvas', 'pole-drum');
+    win.appendChild(drum);
+    body.appendChild(win);
+    var frame = el('canvas', 'pole-frame');
+    body.appendChild(frame);
+    node.appendChild(body);
+    return { node: node, body: body, win: win, drum: drum, frame: frame, painted: '', turn: null };
   }
 
   // One column per barber, the pole standing after the first half of them: between the two when
@@ -157,7 +160,7 @@
       var col = el('section', 'col');
       ui.columns[barber.id] = col;
       ui.cols.appendChild(col);
-      if (i === poleAfter) ui.cols.appendChild(ui.pole);
+      if (i === poleAfter) ui.cols.appendChild(ui.pole.node);
     });
   }
 
@@ -194,6 +197,261 @@
   }
 
   // ---------------------------------------------------------------------------------------------
+  // The pole, painted as a real one is built: a drum wound with red, white and blue turning inside a
+  // glass tube, lit from the left, between chrome caps. The drum is painted once, a stripe set
+  // taller than its window, and slides up by that length on a loop: turning a helix looks exactly
+  // like that. The glass and the chrome are painted over it and stay still.
+  // ---------------------------------------------------------------------------------------------
+
+  function toLinear(c) {
+    c /= 255;
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  }
+
+  function toByte(v) {
+    v = v <= 0 ? 0 : v >= 1 ? 1 : v;
+    return Math.round(255 * (v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055));
+  }
+
+  // The drum's bands going up: red, white, blue, white (the app's red, chalk and blue).
+  var BANDS = [[0xc0, 0x36, 0x2c], [0xf3, 0xf1, 0xec], [0x24, 0x45, 0x6e], [0xf3, 0xf1, 0xec]].map(function (c) {
+    return [toLinear(c[0]), toLinear(c[1]), toLinear(c[2])];
+  });
+
+  // The drum's face, w x h device pixels, band height b CSS pixels, two stripe sets around the
+  // drum. Each pixel column is a slice of the cylinder at angle a; the bands there are shifted by
+  // how far the helix has risen at a, so they bend and crowd toward the edges as on a real drum.
+  // Light: a key from the front left, a weak fill from the right, a soft sheen on the paint.
+  function paintDrum(canvas, w, h, b, dpr) {
+    canvas.width = w;
+    canvas.height = h;
+    var ctx = canvas.getContext('2d');
+    var img = ctx.createImageData(w, h);
+    var data = img.data;
+    var rise = 8 * b / (2 * Math.PI); // the helix rises two sets (8 bands) per turn
+    var lit = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    var x, y, k;
+    for (x = 0; x < w; x += 1) {
+      var s = ((x + 0.5) / w) * 2 - 1;
+      var a = Math.asin(s);
+      var key = Math.max(0, Math.cos(a + 0.55));
+      var fill = Math.max(0, Math.cos(a - 1.15));
+      var shade = 0.08 + 0.95 * key + 0.12 * fill;
+      var sheen = 0.22 * Math.pow(Math.max(0, Math.cos(a + 0.32)), 30);
+      for (k = 0; k < 4; k += 1) {
+        lit[k][0] = toByte(BANDS[k][0] * shade + sheen);
+        lit[k][1] = toByte(BANDS[k][1] * shade + sheen);
+        lit[k][2] = toByte(BANDS[k][2] * shade + sheen);
+      }
+      // How many bands one pixel spans here, so edges blend instead of stepping.
+      var slope = (rise / b) / Math.sqrt(Math.max(1 - s * s, 1e-4)) * (2 / w);
+      var span = Math.min(4, Math.abs(slope) + 1 / (b * dpr));
+      var shift = rise * a / b;
+      for (y = 0; y < h; y += 1) {
+        var u = (y + 0.5) / (dpr * b) + shift;
+        var u1 = u + span / 2;
+        var r = 0;
+        var g = 0;
+        var bl = 0;
+        var at = u - span / 2;
+        while (at < u1) {
+          var n = Math.floor(at);
+          var end = Math.min(n + 1, u1);
+          var c = lit[((n % 4) + 4) % 4];
+          var part = end - at;
+          r += c[0] * part;
+          g += c[1] * part;
+          bl += c[2] * part;
+          at = end;
+        }
+        var i = (y * w + x) * 4;
+        data[i] = r / span;
+        data[i + 1] = g / span;
+        data[i + 2] = bl / span;
+        data[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+
+  function gradient(grad, stops) {
+    stops.forEach(function (st) { grad.addColorStop(st[0], st[1]); });
+    return grad;
+  }
+
+  function across(ctx, x0, x1, stops) {
+    return gradient(ctx.createLinearGradient(x0, 0, x1, 0), stops);
+  }
+
+  function down(ctx, y0, y1, stops) {
+    return gradient(ctx.createLinearGradient(0, y0, 0, y1), stops);
+  }
+
+  // Chrome across a cylinder: the dark room, the bright window it faces on the left, the far wall.
+  function chrome(ctx, x0, x1) {
+    return across(ctx, x0, x1, [
+      [0, '#121211'], [0.06, '#3a3936'], [0.14, '#a9a59c'], [0.19, '#f3f1ec'], [0.24, '#e4e1da'],
+      [0.31, '#8a867e'], [0.43, '#353431'], [0.56, '#222120'], [0.68, '#4a4844'], [0.79, '#9a968e'],
+      [0.86, '#5c5a55'], [0.94, '#2b2a28'], [1, '#121211']
+    ]);
+  }
+
+  // Half an ellipse, above or below the line y; drawn with arc for older browsers.
+  function halfEllipse(ctx, cx, y, rx, ry, up) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.translate(cx, y);
+    ctx.scale(1, ry / rx);
+    if (up) ctx.arc(0, 0, rx, Math.PI, 2 * Math.PI);
+    else ctx.arc(0, 0, rx, 0, Math.PI);
+    ctx.closePath();
+    ctx.restore();
+  }
+
+  // A chrome collar: a short cylinder lit from above, a line of light on its top edge.
+  function collar(ctx, cx, y, w, h) {
+    var x0 = cx - w / 2;
+    ctx.fillStyle = chrome(ctx, x0, x0 + w);
+    ctx.fillRect(x0, y, w, h);
+    ctx.fillStyle = down(ctx, y, y + h, [[0, 'rgba(243,241,236,0.18)'], [0.35, 'rgba(243,241,236,0)'], [0.7, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0.35)']]);
+    ctx.fillRect(x0, y, w, h);
+    ctx.fillStyle = 'rgba(243,241,236,0.45)';
+    ctx.fillRect(x0 + w * 0.08, y, w * 0.84, 1);
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(x0, y + h - 1, w, 1);
+  }
+
+  // The rolled lip that holds the glass: round, so bright on top and dark under.
+  function lip(ctx, cx, y, w, h) {
+    var x0 = cx - w / 2;
+    ctx.fillStyle = chrome(ctx, x0, x0 + w);
+    ctx.fillRect(x0, y, w, h);
+    ctx.fillStyle = down(ctx, y, y + h, [[0, 'rgba(243,241,236,0.5)'], [0.4, 'rgba(243,241,236,0.05)'], [1, 'rgba(0,0,0,0.6)']]);
+    ctx.fillRect(x0, y, w, h);
+  }
+
+  function dome(ctx, cx, y, rx, ry, up) {
+    halfEllipse(ctx, cx, y, rx, ry, up);
+    ctx.fillStyle = chrome(ctx, cx - rx, cx + rx);
+    ctx.fill();
+    halfEllipse(ctx, cx, y, rx, ry, up);
+    ctx.fillStyle = up
+      ? down(ctx, y - ry, y, [[0, 'rgba(0,0,0,0.5)'], [0.55, 'rgba(0,0,0,0.05)'], [1, 'rgba(0,0,0,0)']])
+      : down(ctx, y, y + ry, [[0, 'rgba(0,0,0,0)'], [0.4, 'rgba(0,0,0,0.15)'], [1, 'rgba(0,0,0,0.7)']]);
+    ctx.fill();
+    // The window, reflected on the curve.
+    var hx = cx - rx * 0.42;
+    var hy = up ? y - ry * 0.42 : y + ry * 0.3;
+    halfEllipse(ctx, cx, y, rx, ry, up);
+    ctx.fillStyle = gradient(ctx.createRadialGradient(hx, hy, 0, hx, hy, rx * 0.34), [[0, 'rgba(255,255,255,0.85)'], [1, 'rgba(255,255,255,0)']]);
+    ctx.fill();
+  }
+
+  function ball(ctx, cx, cy, r) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+    ctx.fillStyle = gradient(ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.35, r * 0.05, cx, cy, r), [
+      [0, '#f3f1ec'], [0.3, '#a9a59c'], [0.7, '#353431'], [1, '#121211']
+    ]);
+    ctx.fill();
+  }
+
+  // Paints the pole to its current size; does nothing while the size is unchanged.
+  function paintPole(p) {
+    var W = p.body.clientWidth;
+    var H = p.body.clientHeight;
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    var size = W + 'x' + H + '@' + dpr;
+    if (!W || !H || size === p.painted) return;
+    p.painted = size;
+
+    var cx = W / 2;
+    var glassR = W * 0.4;
+    var drumR = glassR * 0.84;
+    var domeH = W * 0.2;
+    var collarH = W * 0.32;
+    var lipH = W * 0.07;
+    var lipW = glassR * 2 + W * 0.1;
+    var ballR = W * 0.1;
+    var glassTop = domeH + collarH + lipH;
+    var bottomDome = H - ballR * 1.6 - domeH;
+    var glassBottom = bottomDome - collarH - lipH;
+
+    // The drum: a band a fixed share of its radius, a stripe set rounded to whole device pixels so
+    // the loop closes without a seam.
+    var set = Math.max(8, Math.round(drumR * 0.72 * 4 * dpr)) / dpr;
+    var winTop = glassTop - 2;
+    var winH = glassBottom - glassTop + 4;
+    p.win.style.left = (cx - drumR) + 'px';
+    p.win.style.top = winTop + 'px';
+    p.win.style.width = (2 * drumR) + 'px';
+    p.win.style.height = winH + 'px';
+    p.drum.style.width = (2 * drumR) + 'px';
+    p.drum.style.height = (winH + set) + 'px';
+    paintDrum(p.drum, Math.round(2 * drumR * dpr), Math.round((winH + set) * dpr), set / 4, dpr);
+    if (!p.turn) {
+      p.turn = document.createElement('style');
+      document.head.appendChild(p.turn);
+    }
+    p.turn.textContent = '@keyframes pole-turn { from { transform: translateY(0); } to { transform: translateY(-' + set + 'px); } }';
+
+    var canvas = p.frame;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    var ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    var gx0 = cx - glassR;
+    var gx1 = cx + glassR;
+    var gH = glassBottom - glassTop;
+
+    // Through the glass beside the drum: the wall behind, a little lit by the tube.
+    ctx.fillStyle = '#121211';
+    ctx.fillRect(gx0, glassTop, glassR - drumR, gH);
+    ctx.fillRect(cx + drumR, glassTop, glassR - drumR, gH);
+    ctx.fillStyle = across(ctx, gx0, gx1, [[0, 'rgba(243,241,236,0.14)'], [0.12, 'rgba(243,241,236,0)'], [0.88, 'rgba(0,0,0,0)'], [1, 'rgba(243,241,236,0.06)']]);
+    ctx.fillRect(gx0, glassTop, glassR * 2, gH);
+
+    // The tube's reflections: a soft band and a hard line of the window on the left, a thin one on
+    // the right, the far edge in shadow.
+    ctx.fillStyle = across(ctx, gx0, gx1, [
+      [0.1, 'rgba(255,255,255,0)'], [0.24, 'rgba(255,255,255,0.16)'], [0.36, 'rgba(255,255,255,0)'],
+      [0.78, 'rgba(255,255,255,0)'], [0.83, 'rgba(255,255,255,0.16)'], [0.87, 'rgba(255,255,255,0)'],
+      [0.92, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0.35)']
+    ]);
+    ctx.fillRect(gx0, glassTop, glassR * 2, gH);
+    var line = gx0 + glassR * 2 * 0.22;
+    var half = W * 0.025;
+    ctx.fillStyle = across(ctx, line - half, line + half, [[0, 'rgba(255,255,255,0)'], [0.5, 'rgba(255,255,255,0.62)'], [1, 'rgba(255,255,255,0)']]);
+    ctx.fillRect(line - half, glassTop, half * 2, gH);
+
+    // The glass wall seen edge-on at both sides.
+    ctx.fillStyle = 'rgba(243,241,236,0.55)';
+    ctx.fillRect(gx0, glassTop, 1.2, gH);
+    ctx.fillStyle = 'rgba(243,241,236,0.2)';
+    ctx.fillRect(gx1 - 1.2, glassTop, 1.2, gH);
+
+    // The caps' shadow inside the tube.
+    var shadow = W * 0.14;
+    ctx.fillStyle = down(ctx, glassTop, glassTop + shadow, [[0, 'rgba(0,0,0,0.55)'], [1, 'rgba(0,0,0,0)']]);
+    ctx.fillRect(gx0, glassTop, glassR * 2, shadow);
+    ctx.fillStyle = down(ctx, glassBottom - shadow, glassBottom, [[0, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0.45)']]);
+    ctx.fillRect(gx0, glassBottom - shadow, glassR * 2, shadow);
+
+    // The caps.
+    dome(ctx, cx, domeH, W / 2, domeH, true);
+    collar(ctx, cx, domeH, W, collarH);
+    lip(ctx, cx, domeH + collarH, lipW, lipH);
+    lip(ctx, cx, glassBottom, lipW, lipH);
+    collar(ctx, cx, glassBottom + lipH, W, collarH);
+    ball(ctx, cx, H - ballR, ballR);
+    dome(ctx, cx, bottomDome, W / 2, domeH, false);
+  }
+
+  // ---------------------------------------------------------------------------------------------
   // Each barber
   // ---------------------------------------------------------------------------------------------
 
@@ -203,13 +461,6 @@
 
   function keyOf(b) {
     return b.barber_id + '|' + b.starts_at;
-  }
-
-  // The first name, and the rest; «عبد» and «أبو» stay with the word after.
-  function splitName(name) {
-    var words = String(name).trim().split(/\s+/);
-    var take = words.length > 1 && /^(عبد|أبو|ابو)$/.test(words[0]) ? 2 : 1;
-    return { first: words.slice(0, take).join(' '), rest: words.slice(take).join(' ') };
   }
 
   function freeLine(barber, t) {
@@ -259,14 +510,12 @@
       var booked = time(Date.parse(b.starts_at));
       var row;
       if (place === 1) {
-        var name = splitName(b.name);
         row = el('li', 'poster' + stepped);
         var posterHead = el('div', 'poster-head');
         posterHead.appendChild(el('span', 'poster-tag', COPY.next));
         posterHead.appendChild(el('span', 'poster-time num', booked));
         row.appendChild(posterHead);
-        row.appendChild(el('div', 'poster-first', name.first));
-        if (name.rest) row.appendChild(el('div', 'poster-rest', name.rest));
+        row.appendChild(el('div', 'poster-name', b.name));
       } else {
         row = el('li', 'place place-' + Math.min(place, 5) + stepped);
         row.appendChild(el('span', 'place-no num', String(place)));
@@ -337,9 +586,10 @@
     shownPlace = placeShown;
 
     // The pole turns while anyone still has an appointment or a free time today.
-    ui.pole.className = open ? 'pole' : 'pole still';
+    ui.pole.node.className = open ? 'pole' : 'pole still';
+    paintPole(ui.pole);
 
-    Array.prototype.forEach.call(ui.cols.querySelectorAll('.now-name, .poster-first, .poster-rest, .place-name'), shrink);
+    Array.prototype.forEach.call(ui.cols.querySelectorAll('.now-name, .poster-name, .place-name'), shrink);
     Array.prototype.forEach.call(ui.cols.querySelectorAll('.line'), fit);
   }
 
