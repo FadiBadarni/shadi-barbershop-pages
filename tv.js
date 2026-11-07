@@ -3,49 +3,42 @@
 // today's bookings that have not ended. For now it draws sample data; linking a screen and reading
 // the shop's real board come next.
 //
-// Each barber is a lane: the chair on the right, and a track running off to the left on which every
-// client sits as far from the chair as they are minutes away. The track's right edge is now.
+// Order, never minutes: a cut runs a few minutes early or late, so the board shows whose appointment
+// it is by the schedule and the time each client booked, and never counts down.
 //
 // Written for TV browsers, which can be years old: no optional chaining, no newer syntax.
 (function () {
   'use strict';
 
-  // How far ahead the track looks, in minutes.
-  var WINDOW_MINUTES = 100;
-  var TICK_MINUTES = 20;
   var MINUTE = 60 * 1000;
 
   var COPY = {
-    inChair: 'على الكرسي',
-    chairEmpty: 'الكرسي فارغ',
-    until: 'حتى',
+    nowLabel: 'موعده الآن',
+    nobodyNow: 'لا موعد الآن',
+    next: 'التالي',
+    noMore: 'لا مواعيد أخرى اليوم',
+    more: function (n) { return 'و' + n + ' آخرون'; },
     freeNow: 'متاح الآن',
     freeAt: 'أقرب موعد',
     noFree: 'لا مواعيد متاحة اليوم',
-    nobodyWaiting: 'لا أحد في الانتظار',
-    startsNow: 'الآن',
-    inMinutes: function (n) { return 'بعد ' + minutesAr(n); },
-    later: function (n) { return 'و' + n + ' آخرون لاحقًا'; },
     updated: 'آخر تحديث',
-    maker: 'برايم سيستمز',
-    makerLine: 'نبني المواقع والتطبيقات التي يقوم عليها عملك',
-    makerSite: 'prime-systems.co.il'
+    creditMade: 'تطبيق الحجز وهذه الشاشة من تطوير',
+    creditName: 'برايم سيستمز',
+    creditLine: 'نبني المواقع والتطبيقات التي يقوم عليها عملك',
+    creditSite: 'prime-systems.co.il'
   };
 
-  // As the app counts minutes (private.minutes_ar): دقيقة, دقيقتين, 3–10 دقائق, 11 and up دقيقة.
-  function minutesAr(n) {
-    if (n === 1) return 'دقيقة';
-    if (n === 2) return 'دقيقتين';
-    if (n >= 3 && n <= 10) return n + ' دقائق';
-    return n + ' دقيقة';
-  }
-
-  // The board, the server's clock minus this screen's (screen clocks drift), when it was read, and
-  // who sat in each chair at the last drawing.
+  // The board, the server's clock minus this screen's (screen clocks drift), and when it was read.
   var board = null;
   var offset = 0;
   var readAt = 0;
-  var seated = null;
+
+  // What the last drawing showed: each barber's appointment now, and each client's place in line.
+  var shownNow = null;
+  var shownPlace = null;
+
+  // The page's fixed parts, built once so the credits strip never restarts.
+  var ui = null;
 
   function now() {
     return Date.now() + offset;
@@ -86,7 +79,7 @@
   }
 
   // ---------------------------------------------------------------------------------------------
-  // Drawing
+  // The page's fixed parts
   // ---------------------------------------------------------------------------------------------
 
   function el(tag, className, text) {
@@ -96,15 +89,80 @@
     return node;
   }
 
+  function build() {
+    var root = document.getElementById('board');
+    root.textContent = '';
+
+    var top = el('header', 'top');
+    var shop = el('h1', 'shop');
+    top.appendChild(shop);
+    var when = el('div', 'when');
+    var stale = el('span', 'stale num');
+    var dayNode = el('span', 'day num');
+    var clock = el('span', 'clock num');
+    when.appendChild(stale);
+    when.appendChild(dayNode);
+    when.appendChild(clock);
+    top.appendChild(when);
+    root.appendChild(top);
+
+    var cols = el('div', 'cols');
+    root.appendChild(cols);
+
+    var band = el('footer', 'credits');
+    var track = el('div', 'credits-track');
+    band.appendChild(track);
+    root.appendChild(band);
+
+    ui = { shop: shop, stale: stale, day: dayNode, clock: clock, cols: cols, band: band, track: track, barbers: '' };
+    fillCredits();
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // The credits strip: the same line over and over, drifting right as an Arabic news ticker does
+  // ---------------------------------------------------------------------------------------------
+
+  function credit() {
+    var item = el('span', 'credit');
+    var mark = el('img');
+    mark.src = 'prime-logo.svg';
+    mark.alt = '';
+    item.appendChild(mark);
+    item.appendChild(el('span', '', COPY.creditMade));
+    item.appendChild(el('strong', '', COPY.creditName));
+    item.appendChild(el('span', 'sep', '·'));
+    item.appendChild(el('span', '', COPY.creditLine));
+    item.appendChild(el('span', 'sep', '·'));
+    item.appendChild(el('span', 'site', COPY.creditSite));
+    return item;
+  }
+
+  // Two identical halves, each at least as wide as the screen; the strip slides by one half and
+  // starts over, so the seam never shows.
+  function fillCredits() {
+    var track = ui.track;
+    track.textContent = '';
+    track.style.animation = 'none';
+    var first = credit();
+    track.appendChild(first);
+    var width = first.offsetWidth || 1;
+    var copies = Math.max(1, Math.ceil(ui.band.clientWidth / width));
+    var i;
+    for (i = 1; i < copies * 2; i += 1) track.appendChild(credit());
+    var pixelsPerSecond = window.innerHeight * 0.07;
+    track.style.animation = 'credits ' + (width * copies / pixelsPerSecond) + 's linear infinite';
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Each barber
+  // ---------------------------------------------------------------------------------------------
+
   function byStart(a, b) {
     return Date.parse(a.starts_at) - Date.parse(b.starts_at);
   }
 
-  // The first name on its own line, the rest under it; «عبد» and «أبو» stay with the word after.
-  function splitName(name) {
-    var words = String(name).trim().split(/\s+/);
-    var take = words.length > 1 && /^(عبد|أبو|ابو)$/.test(words[0]) ? 2 : 1;
-    return { first: words.slice(0, take).join(' '), rest: words.slice(take).join(' ') };
+  function keyOf(b) {
+    return b.barber_id + '|' + b.starts_at;
   }
 
   function freeLine(barber, t) {
@@ -116,118 +174,55 @@
     return line;
   }
 
-  // A block on the track, placed later by place(): from its start to its end, in minutes from now.
-  function block(className, startMs, endMs) {
-    var node = el('div', 'block ' + className);
-    node.setAttribute('data-start', String(startMs));
-    node.setAttribute('data-end', String(endMs));
-    return node;
-  }
-
-  function lane(barber, t, arrivals) {
+  function column(barber, t, nowShown, placeShown) {
     var mine = board.bookings.filter(function (b) {
       return b.barber_id === barber.id && Date.parse(b.ends_at) > t;
     }).sort(byStart);
     var current = null;
-    var upcoming = [];
+    var waiting = [];
     mine.forEach(function (b) {
       if (Date.parse(b.starts_at) <= t) current = b;
-      else upcoming.push(b);
+      else waiting.push(b);
     });
 
-    var row = el('section', 'lane');
+    var col = el('section', 'col');
 
-    // The chair.
-    var chair = el('div', 'chair');
-    chair.appendChild(el('h2', 'barber-name', barber.name));
-    var status = el('div', 'status');
-    status.appendChild(freeLine(barber, t));
-    chair.appendChild(status);
+    var head = el('div', 'barber');
+    head.appendChild(el('h2', 'barber-name', barber.name));
+    head.appendChild(freeLine(barber, t));
+    col.appendChild(head);
 
-    var seatKey = current ? current.starts_at + '|' + current.name : '';
-    var seat = el('div', arrivals && seated && seated[barber.id] !== seatKey && current ? 'seat arrive' : 'seat');
-    arrivals[barber.id] = seatKey;
-    if (current) {
-      seat.appendChild(el('div', 'seat-label', COPY.inChair));
-      seat.appendChild(el('div', 'seat-name', current.name));
-      seat.appendChild(el('div', 'seat-until num', COPY.until + ' ' + time(Date.parse(current.ends_at))));
-    } else {
-      seat.appendChild(el('div', 'seat-name quiet', COPY.chairEmpty));
-    }
-    chair.appendChild(seat);
-    row.appendChild(chair);
+    // Whose appointment it is now. Rises into place when the schedule moves on to someone new.
+    var nowKey = current ? keyOf(current) : '';
+    nowShown[barber.id] = nowKey;
+    var moved = shownNow && current && shownNow[barber.id] !== nowKey;
+    var nowRow = el('div', moved ? 'now arrive' : 'now');
+    nowRow.appendChild(el('span', 'now-label', COPY.nowLabel));
+    nowRow.appendChild(current ? el('span', 'now-name', current.name) : el('span', 'now-name quiet', COPY.nobodyNow));
+    col.appendChild(nowRow);
 
-    // The track.
-    var track = el('div', 'track');
-    if (current) track.appendChild(block('busy', t, Date.parse(current.ends_at)));
-    upcoming.forEach(function (b, i) {
-      var start = Date.parse(b.starts_at);
-      var node = block(i === 0 ? 'next' : '', start, Date.parse(b.ends_at));
-      // The next one counts down; the rest are timed by the clock under the track.
-      if (i === 0) {
-        var minutes = Math.ceil((start - t) / MINUTE);
-        node.appendChild(el('div', 'block-when num', minutes <= 0 ? COPY.startsNow : COPY.inMinutes(minutes)));
-      }
-      var name = splitName(b.name);
-      node.appendChild(el('div', 'block-first', name.first));
-      if (name.rest) node.appendChild(el('div', 'block-rest', name.rest));
-      track.appendChild(node);
+    // The line, largest first. A client who moved up a place since the last drawing rises into it.
+    var line = el('ol', 'line');
+    waiting.forEach(function (b, i) {
+      var place = i + 1;
+      var key = keyOf(b);
+      placeShown[key] = place;
+      var stepped = shownPlace && shownPlace[key] && shownPlace[key] > place;
+      var row = el('li', 'place place-' + Math.min(place, 5) + (stepped ? ' advance' : ''));
+      var tag = el('div', 'place-tag');
+      tag.appendChild(el('span', '', COPY.next));
+      row.appendChild(tag);
+      row.appendChild(el('span', 'place-name', b.name));
+      row.appendChild(el('span', 'place-time num', time(Date.parse(b.starts_at))));
+      line.appendChild(row);
     });
+    if (!waiting.length) line.appendChild(el('li', 'done', COPY.noMore));
+    col.appendChild(line);
 
-    var tick = Math.ceil(t / (TICK_MINUTES * MINUTE)) * TICK_MINUTES * MINUTE;
-    for (; tick <= t + WINDOW_MINUTES * MINUTE; tick += TICK_MINUTES * MINUTE) {
-      var mark = el('div', 'tick');
-      mark.setAttribute('data-at', String(tick));
-      mark.appendChild(el('span', 'tick-time num', time(tick)));
-      track.appendChild(mark);
-    }
-
-    track.appendChild(el('div', 'now-label', COPY.startsNow));
-    if (!current && !upcoming.length) track.appendChild(el('div', 'track-empty', COPY.nobodyWaiting));
-    row.appendChild(track);
-    return row;
+    return col;
   }
 
-  // Lay each block and tick at its distance from the chair, now that the track has a width.
-  function place(track, t) {
-    var width = track.clientWidth;
-    var perMinute = width / WINDOW_MINUTES;
-    var gap = window.innerHeight * 0.008;
-    var beyond = 0;
-
-    Array.prototype.forEach.call(track.querySelectorAll('.block'), function (node) {
-      var from = (Number(node.getAttribute('data-start')) - t) / MINUTE * perMinute;
-      var to = (Number(node.getAttribute('data-end')) - t) / MINUTE * perMinute;
-      if (from >= width) {
-        track.removeChild(node);
-        beyond += 1;
-        return;
-      }
-      node.style.right = from + 'px';
-      node.style.width = Math.max(to - from - gap, 0) + 'px';
-    });
-
-    // A tick too close to the chair would sit on the «الآن» under it.
-    Array.prototype.forEach.call(track.querySelectorAll('.tick'), function (node) {
-      var at = (Number(node.getAttribute('data-at')) - t) / MINUTE;
-      if (at < 8) track.removeChild(node);
-      else node.style.right = at * perMinute + 'px';
-    });
-
-    // The count of those past the end takes the far end of the clock, and the ticks under it go.
-    if (beyond) {
-      var tag = el('div', 'later-tag', COPY.later(beyond));
-      track.appendChild(tag);
-      var clear = width - tag.offsetWidth - window.innerHeight * 0.08;
-      Array.prototype.forEach.call(track.querySelectorAll('.tick'), function (node) {
-        if (parseFloat(node.style.right) > clear) track.removeChild(node);
-      });
-    }
-
-    // Long names shrink, down to a little over half size, before they are cut.
-    Array.prototype.forEach.call(track.querySelectorAll('.block-first, .block-rest'), shrink);
-  }
-
+  // Long names shrink, down to a little over half size, before they are cut.
   function shrink(node) {
     var size = parseFloat(window.getComputedStyle(node).fontSize);
     var least = size * 0.55;
@@ -237,53 +232,52 @@
     }
   }
 
-  function signature() {
-    var sig = el('div', 'sig');
-    var mark = el('img');
-    mark.src = 'prime-logo.svg';
-    mark.alt = '';
-    sig.appendChild(mark);
-    sig.appendChild(el('span', 'sig-name', COPY.maker));
-    sig.appendChild(el('span', 'sig-line', COPY.makerLine));
-    sig.appendChild(el('span', 'sig-site', COPY.makerSite));
-    return sig;
+  // Drop the last places that do not fit, and count them instead.
+  function fit(line) {
+    var hidden = 0;
+    var more = null;
+    while (line.scrollHeight > line.clientHeight + 1) {
+      var rows = line.querySelectorAll('.place');
+      if (rows.length <= 1) break;
+      line.removeChild(rows[rows.length - 1]);
+      hidden += 1;
+      if (!more) {
+        more = el('li', 'more');
+        line.appendChild(more);
+      }
+      more.textContent = COPY.more(hidden);
+    }
   }
+
+  // ---------------------------------------------------------------------------------------------
+  // Drawing
+  // ---------------------------------------------------------------------------------------------
 
   function draw() {
     if (!board) return;
+    if (!ui) build();
     var t = now();
 
     var count = board.barbers.length;
     document.documentElement.style.setProperty('--k', count <= 2 ? '1' : count === 3 ? '0.8' : '0.66');
 
-    var root = document.getElementById('board');
-    root.textContent = '';
-
-    var top = el('header', 'top');
-    top.appendChild(el('h1', 'shop', board.shop.name));
-    var when = el('div', 'when');
-    when.appendChild(el('span', 'day num', day(t)));
-    when.appendChild(el('span', 'clock num', time(t)));
-    top.appendChild(when);
-    root.appendChild(top);
-
-    var arrivals = {};
-    var lanes = el('div', 'lanes');
-    board.barbers.forEach(function (barber) {
-      lanes.appendChild(lane(barber, t, arrivals));
-    });
-    root.appendChild(lanes);
-    seated = arrivals;
-
-    var foot = el('footer', 'foot');
+    ui.shop.textContent = board.shop.name;
+    ui.day.textContent = day(t);
+    ui.clock.textContent = time(t);
     // A board more than three minutes old says so, rather than pass old news off as current.
-    if (t - readAt > 3 * MINUTE) foot.appendChild(el('span', 'stale num', COPY.updated + ' ' + time(readAt)));
-    foot.appendChild(signature());
-    root.appendChild(foot);
+    ui.stale.textContent = t - readAt > 3 * MINUTE ? COPY.updated + ' ' + time(readAt) : '';
 
-    Array.prototype.forEach.call(root.querySelectorAll('.track'), function (track) {
-      place(track, t);
+    var nowShown = {};
+    var placeShown = {};
+    ui.cols.textContent = '';
+    board.barbers.forEach(function (barber) {
+      ui.cols.appendChild(column(barber, t, nowShown, placeShown));
     });
+    shownNow = nowShown;
+    shownPlace = placeShown;
+
+    Array.prototype.forEach.call(ui.cols.querySelectorAll('.now-name, .place-name'), shrink);
+    Array.prototype.forEach.call(ui.cols.querySelectorAll('.line'), fit);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -329,7 +323,7 @@
   }
 
   // ---------------------------------------------------------------------------------------------
-  // The screen: awake, full screen on OK, redrawn every few seconds as the queue moves
+  // The screen: awake, full screen on OK, redrawn every few seconds
   // ---------------------------------------------------------------------------------------------
 
   function keepAwake() {
@@ -352,8 +346,13 @@
     if (e.key === 'Enter') fullScreen();
   });
 
-  window.addEventListener('resize', draw);
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(draw);
+  function relayout() {
+    if (ui) fillCredits();
+    draw();
+  }
+
+  window.addEventListener('resize', relayout);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(relayout);
 
   show(sampleBoard());
   keepAwake();

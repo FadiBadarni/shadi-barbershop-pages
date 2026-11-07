@@ -1,6 +1,7 @@
-/* The shop's TV: each barber's queue drawn as a track running into the chair. Distance on the track
-   is time: the edge of the chair is now, and every client sits as far from it as they are minutes
-   away, so the room sees who is next and how soon at a glance.
+/* The shop's TV: each barber's line of clients, set as type that recedes. The next client is the
+   largest thing in the room; each one after is a step smaller and dimmer, so place in line reads at
+   a glance from across the shop. Order, never minutes: a cut runs a few minutes early or late, so the
+   board shows only the time each client booked, never a countdown.
 
    Landscape; 1rem is 1% of the screen's height, so the board fills any TV the same way. Physical
    left/right throughout (the page is only ever right-to-left), for TV browsers too old for logical
@@ -44,7 +45,7 @@
   --muted: #8a867e;
   --red: #c0362c;
   --green: #284a39;
-  /* Set by tv.js: smaller type when three or four barbers share the height. */
+  /* Set by tv.js: smaller type when three or four barbers share the width. */
   --k: 1;
 }
 
@@ -113,46 +114,48 @@ body {
   line-height: 1.1;
 }
 
-/* One lane per barber: the chair on the right, the track running off to the left. */
+/* One column per barber, the first on the right. */
 
-.lanes {
+.cols {
   flex: 1;
   min-height: 0;
   display: flex;
-  flex-direction: column;
 }
 
-.lane {
+.col {
   flex: 1 1 0;
-  min-height: 0;
-  display: flex;
-  padding: 2.6rem 0;
-}
-
-.lane + .lane {
-  border-top: 0.2rem solid var(--shade);
-}
-
-.chair {
-  flex: none;
-  width: 27vw;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  padding-left: 2.4vw;
+  padding: 3rem 3vw 0;
+}
+
+.col:first-child {
+  padding-right: 0;
+}
+
+.col:last-child {
+  padding-left: 0;
+}
+
+.col + .col {
+  border-right: 0.2rem solid var(--shade);
+}
+
+.barber {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .barber-name {
-  font-size: calc(7rem * var(--k));
+  font-size: calc(6.6rem * var(--k));
   font-weight: 700;
-  line-height: 1.2;
-}
-
-.status {
-  margin-top: 0.8rem;
+  line-height: 1.25;
 }
 
 .free {
-  display: inline-block;
+  margin-right: 2rem;
   font-size: calc(2.8rem * var(--k));
   color: var(--ash);
   white-space: nowrap;
@@ -166,41 +169,158 @@ body {
   font-weight: 600;
 }
 
-.seat {
-  margin-top: auto;
+/* Whose appointment it is now, by the schedule. */
+
+.now {
+  display: flex;
+  align-items: baseline;
+  margin-top: 2rem;
+  padding-bottom: 2.2rem;
+  border-bottom: 0.2rem solid var(--shade);
   white-space: nowrap;
 }
 
-.seat-label {
+.now-label {
+  flex: none;
+  margin-left: 2.2rem;
   font-size: calc(2.6rem * var(--k));
   color: var(--ash);
 }
 
-.seat-name {
+.now-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: calc(4.8rem * var(--k));
+  font-size: calc(4.4rem * var(--k));
   font-weight: 500;
   line-height: 1.35;
 }
 
-.seat-name.quiet {
+.now-name.quiet {
   color: var(--muted);
 }
 
-.seat-until {
+/* The line. Each place is a step smaller and dimmer than the one before it. */
+
+.line {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  list-style: none;
+  padding-top: 2.4rem;
+}
+
+.place {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  white-space: nowrap;
+  padding: 0.6rem 0 0.8rem;
+}
+
+.place-tag {
+  display: none;
+}
+
+.place-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.place-time {
+  flex: none;
+  margin-right: auto;
+  padding-right: 2rem;
+  color: var(--muted);
+}
+
+.place-1 {
+  margin-bottom: 1.6rem;
+  padding: 1.8rem 2.6rem 2.2rem 2.6rem;
+  border-right: 0.9rem solid var(--red);
+  background: var(--shade-low);
+}
+
+.place-1 .place-tag {
+  display: block;
+  flex: 0 0 100%;
+}
+
+.place-1 .place-tag span {
+  display: inline-block;
+  padding: 0.3rem 1.6rem 0.7rem;
+  border-radius: 0.5rem;
+  background: var(--red);
+  font-size: calc(2.8rem * var(--k));
+  font-weight: 600;
+}
+
+.place-1 .place-name {
+  margin-top: 0.8rem;
+  font-size: calc(9rem * var(--k));
+  font-weight: 700;
+}
+
+.place-1 .place-time {
+  font-size: calc(3.4rem * var(--k));
+  color: var(--ash);
+}
+
+.place-2 .place-name {
+  font-size: calc(5.8rem * var(--k));
+  font-weight: 600;
+}
+
+.place-2 .place-time {
+  font-size: calc(3rem * var(--k));
+  color: var(--ash);
+}
+
+.place-3 .place-name {
+  font-size: calc(4.8rem * var(--k));
+  font-weight: 500;
+  color: var(--ash);
+}
+
+.place-3 .place-time {
+  font-size: calc(2.8rem * var(--k));
+}
+
+.place-4 .place-name {
+  font-size: calc(4rem * var(--k));
+  color: var(--ash);
+}
+
+.place-4 .place-time,
+.place-5 .place-time {
   font-size: calc(2.6rem * var(--k));
+}
+
+.place-5 .place-name {
+  font-size: calc(3.4rem * var(--k));
   color: var(--muted);
 }
 
-/* A client who has just taken the chair slides in off the track. */
-.seat.arrive .seat-name {
-  animation: arrive 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+.line .more,
+.line .done {
+  padding-top: 1rem;
+  font-size: calc(2.8rem * var(--k));
+  color: var(--muted);
 }
 
-@keyframes arrive {
+/* When the schedule moves on, the line steps forward: each client who moved up a place rises into
+   it, and the one whose appointment it now is comes up from the line. */
+
+.place.advance,
+.now.arrive .now-name {
+  animation: advance 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes advance {
   from {
-    transform: translateX(-8rem);
+    transform: translateY(3rem);
     opacity: 0;
   }
   to {
@@ -209,164 +329,76 @@ body {
   }
 }
 
-/* The track. Its right edge, in chalk, is the chair and now. */
-
-.track {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  border-right: 0.4rem solid var(--chalk);
-}
-
-.block {
-  position: absolute;
-  top: 0;
-  bottom: 5.4rem;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  padding: 1.4rem 1.6rem 1.6rem;
-  border-radius: 0.4rem;
-  background: var(--shade-low);
-  white-space: nowrap;
-}
-
-/* What is left of the client in the chair: the time before the next one can sit. */
-.block.busy {
-  padding: 0;
-  background: var(--shade);
-}
-
-.block.next {
-  background: var(--red);
-}
-
-.block-when {
-  font-size: calc(2.6rem * var(--k));
-  color: var(--ash);
-}
-
-.block.next .block-when {
-  color: var(--chalk);
-  font-weight: 600;
-}
-
-.block-first {
-  margin-top: auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: calc(5.6rem * var(--k));
-  font-weight: 700;
-  line-height: 1.3;
-}
-
-.block-rest {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: calc(3.4rem * var(--k));
-  color: var(--ash);
-  line-height: 1.35;
-}
-
-.block.next .block-rest {
-  color: var(--chalk);
-}
-
-/* The clock along the bottom of the track, every 20 minutes. */
-
-.tick {
-  position: absolute;
-  bottom: 0;
-  height: 4.6rem;
-  border-right: 0.2rem solid var(--shade);
-}
-
-.tick-time {
-  position: absolute;
-  bottom: 0.2rem;
-  right: 0.8rem;
-  font-size: calc(2.3rem * var(--k));
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-/* Now, under the chair's edge. */
-.now-label {
-  position: absolute;
-  bottom: 0.2rem;
-  right: 0.8rem;
-  font-size: calc(2.3rem * var(--k));
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-/* How many more are waiting past the end of the track, over the clock at its far end. */
-.later-tag {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  z-index: 1;
-  height: 4.6rem;
-  padding: 0.4rem 0 0 1.4rem;
-  background: var(--wall);
-  font-size: calc(2.6rem * var(--k));
-  color: var(--ash);
-  white-space: nowrap;
-}
-
-.track-empty {
-  position: absolute;
-  top: 0;
-  bottom: 5.4rem;
-  right: 3rem;
-  display: flex;
-  align-items: center;
-  font-size: calc(3.4rem * var(--k));
-  color: var(--muted);
-}
-
-/* The foot: a stale notice when there is one, and who made the screen. */
-
-.foot {
-  display: flex;
-  align-items: center;
-  padding: 1.6rem 0 2.2rem;
-  border-top: 0.2rem solid var(--shade);
-}
+/* Shown beside the day only when the board has not been refreshed for a while. */
 
 .stale {
-  font-size: 2.4rem;
+  margin-left: 3rem;
+  font-size: 2.6rem;
   color: var(--muted);
 }
 
-.sig {
+/* The credits: Prime Systems on a strip that drifts along the bottom edge, as a news ticker does,
+   entering from the left as Arabic tickers do. tv.js fills it with copies of one line and sets the
+   pace. */
+
+.credits {
+  flex: none;
   display: flex;
   align-items: center;
-  margin-right: auto;
+  height: 7rem;
+  margin: 2.4rem -4vw 0;
+  overflow: hidden;
+  direction: ltr;
+  border-top: 0.2rem solid var(--shade);
+  background: var(--shade-low);
 }
 
-.sig img {
-  height: 3.6rem;
-  width: auto;
-  margin-left: 1.4rem;
+.credits-track {
+  flex: none;
+  display: flex;
+  will-change: transform;
 }
 
-.sig-name {
-  font-size: 2.8rem;
-  font-weight: 700;
+@keyframes credits {
+  from {
+    transform: translateX(-50%);
+  }
+  to {
+    transform: translateX(0);
+  }
 }
 
-.sig-line {
-  margin-right: 2rem;
-  font-size: 2.4rem;
+.credit {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 0 6rem;
+  direction: rtl;
+  white-space: nowrap;
+  font-size: 2.6rem;
   color: var(--ash);
 }
 
-.sig-site {
-  margin-right: 2rem;
-  font-size: 2.4rem;
+/* The mark is 516 x 560. */
+.credit img {
+  height: 3.6rem;
+  width: 3.32rem;
+  margin-left: 1.6rem;
+}
+
+.credit strong {
+  margin-right: 0.8rem;
+  font-weight: 700;
+  color: var(--chalk);
+}
+
+.credit .sep {
+  margin: 0 2.2rem;
   color: var(--muted);
+}
+
+.credit .site {
   direction: ltr;
   unicode-bidi: embed;
+  color: var(--muted);
 }
