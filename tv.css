@@ -1,0 +1,288 @@
+/* The shop's TV: today's queue, read from across the room. Landscape; every size is in rem, and
+   1rem is 1% of the screen's height, so the board fills any TV the same way. Colours are the app's
+   (apps/shadi/src/theme.ts): charcoal wall, chalk text, the printer's red for who is next, the
+   bottle green for a barber who is free. */
+
+@font-face {
+  font-family: "Firjar";
+  src: url("fonts/Firjar-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Firjar";
+  src: url("fonts/Firjar-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Firjar";
+  src: url("fonts/Firjar-SemiBold.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Firjar";
+  src: url("fonts/Firjar-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+
+:root {
+  --wall: #171716;
+  --shade: #2b2a28;
+  --shade-low: #222120;
+  --chalk: #f3f1ec;
+  --ash: #b8b4ab;
+  --muted: #8a867e;
+  --red: #c0362c;
+  --green: #284a39;
+  /* Set by tv.js: smaller type when three or four barbers share the width. */
+  --k: 1;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 1vh;
+  background: var(--wall);
+}
+
+body {
+  height: 100vh;
+  overflow: hidden;
+  background: var(--wall);
+  color: var(--chalk);
+  font-family: "Firjar", Tahoma, sans-serif;
+  font-weight: 400;
+  cursor: none;
+}
+
+.board {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 4rem 4.5vw 3rem;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The shop's name, the day and the clock. */
+
+.top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4rem;
+  padding-bottom: 2.4rem;
+  border-bottom: 0.3rem solid var(--chalk);
+}
+
+.shop {
+  font-size: 5.4rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.when {
+  display: flex;
+  align-items: baseline;
+  gap: 3rem;
+}
+
+.day {
+  font-size: 3.2rem;
+  color: var(--ash);
+}
+
+.clock {
+  font-size: 6.6rem;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+/* One column per barber, the first on the right. */
+
+.cols {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.col {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 3.4rem 3vw 0;
+}
+
+.col:first-child {
+  padding-inline-start: 0;
+}
+
+.col:last-child {
+  padding-inline-end: 0;
+}
+
+.col + .col {
+  border-inline-start: 0.2rem solid var(--shade);
+}
+
+.barber {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+}
+
+.barber-name {
+  font-size: calc(6.6rem * var(--k));
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.free {
+  font-size: calc(3rem * var(--k));
+  color: var(--ash);
+  white-space: nowrap;
+}
+
+.free.open {
+  padding: 0.5rem 1.8rem 0.9rem;
+  border-radius: 0.6rem;
+  background: var(--green);
+  color: var(--chalk);
+  font-weight: 600;
+}
+
+/* Who is in the chair. */
+
+.chair {
+  display: flex;
+  align-items: baseline;
+  gap: 2.4rem;
+  margin-top: 2.6rem;
+  white-space: nowrap;
+}
+
+.chair-label {
+  font-size: calc(2.8rem * var(--k));
+  color: var(--ash);
+}
+
+.chair-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: calc(4.6rem * var(--k));
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.chair-until {
+  margin-inline-start: auto;
+  font-size: calc(2.8rem * var(--k));
+  color: var(--muted);
+}
+
+.quiet {
+  color: var(--muted);
+}
+
+/* Who is next: the one thing the room is looking for. */
+
+.next {
+  margin-top: 2.6rem;
+  padding: 2.4rem 2.8rem 2.6rem;
+  border-inline-start: 0.9rem solid var(--red);
+  background: var(--shade-low);
+}
+
+.next-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.next-tag {
+  padding: 0.3rem 1.6rem 0.7rem;
+  border-radius: 0.5rem;
+  background: var(--red);
+  font-size: calc(2.8rem * var(--k));
+  font-weight: 600;
+}
+
+.next-time {
+  font-size: calc(4.6rem * var(--k));
+  font-weight: 600;
+}
+
+.next-name {
+  margin-top: 1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: calc(8.2rem * var(--k));
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.next.none .next-name {
+  font-size: calc(4.6rem * var(--k));
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* The rest of the day, as many as fit; the remainder is counted. */
+
+.later {
+  flex: 1;
+  min-height: 0;
+  margin-top: 2.6rem;
+  overflow: hidden;
+  list-style: none;
+}
+
+.later li {
+  display: flex;
+  align-items: baseline;
+  gap: 2.6rem;
+  padding: 1.1rem 0 1.5rem;
+  border-top: 0.15rem solid var(--shade);
+  white-space: nowrap;
+}
+
+.later-time {
+  font-size: calc(3.2rem * var(--k));
+  color: var(--ash);
+}
+
+.later-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: calc(3.8rem * var(--k));
+}
+
+.later .more {
+  font-size: calc(3rem * var(--k));
+  color: var(--muted);
+}
+
+/* Shown only when the board has not been refreshed for a while. */
+
+.stale {
+  padding-top: 1.6rem;
+  font-size: 2.4rem;
+  color: var(--muted);
+}
