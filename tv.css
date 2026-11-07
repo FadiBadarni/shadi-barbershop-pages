@@ -74,10 +74,27 @@ body {
 }
 
 .board {
+  position: relative;
   height: 100vh;
   display: flex;
   flex-direction: column;
   padding: 3rem 4vw 0;
+}
+
+/* The pole is lit from inside, as real ones are, and throws a soft light on the wall around it.
+   tv.js paints it; the light goes out when the pole stops at the end of the day. */
+.light {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  transition: opacity 3s ease;
+}
+
+.light.off {
+  opacity: 0;
 }
 
 .num {
@@ -90,8 +107,11 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-bottom: 1.8rem;
-  border-bottom: 0.3rem solid var(--chalk);
+  padding-bottom: 2.1rem;
+  /* The rule under the header, in two pieces either side of the crown (tv.js sets the widths). */
+  background:
+    linear-gradient(var(--chalk), var(--chalk)) left bottom / var(--rule-left, 100%) 0.3rem no-repeat,
+    linear-gradient(var(--chalk), var(--chalk)) right bottom / var(--rule-right, 0) 0.3rem no-repeat;
 }
 
 .brand {
@@ -184,7 +204,6 @@ body {
   width: auto;
   margin-top: -15rem;
   padding: 0 1.6rem 0.8rem;
-  background: var(--wall);
 }
 
 .pole-body {

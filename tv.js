@@ -100,6 +100,8 @@
   function build() {
     var root = document.getElementById('board');
     root.textContent = '';
+    var light = el('canvas', 'light');
+    document.body.insertBefore(light, root);
 
     var top = el('header', 'top');
     var brand = el('div', 'brand');
@@ -126,8 +128,8 @@
     root.appendChild(band);
 
     ui = {
-      shop: shop, stale: stale, day: dayNode, clock: clock, cols: cols, band: band, track: track,
-      pole: pole(), columns: {}, barbers: null
+      top: top, shop: shop, stale: stale, day: dayNode, clock: clock, cols: cols, band: band, track: track,
+      light: light, lit: '', pole: pole(), columns: {}, barbers: null
     };
     fillCredits();
   }
@@ -135,7 +137,10 @@
   function pole() {
     var node = el('div', 'pole');
     // The shop's mark crowns it: the engraved bearded man from the app, in the middle of the top.
-    node.appendChild(image('skull.png', 'pole-crown'));
+    var crown = image('skull.png', 'pole-crown');
+    // Its width is known only once it loads; the header's rule breaks around it.
+    crown.onload = function () { if (ui) paintLight(); };
+    node.appendChild(crown);
     var body = el('div', 'pole-body');
     var win = el('div', 'pole-window');
     var drum = el('canvas', 'pole-drum');
@@ -144,7 +149,7 @@
     var frame = el('canvas', 'pole-frame');
     body.appendChild(frame);
     node.appendChild(body);
-    return { node: node, body: body, win: win, drum: drum, frame: frame, painted: '', turn: null };
+    return { node: node, crown: crown, body: body, win: win, drum: drum, frame: frame, painted: '', turn: null, glass: null };
   }
 
   // One column per barber, the pole standing after the first half of them: between the two when
@@ -376,6 +381,7 @@
     var glassTop = domeH + collarH + lipH;
     var bottomDome = H - ballR * 1.6 - domeH;
     var glassBottom = bottomDome - collarH - lipH;
+    p.glass = { top: glassTop, bottom: glassBottom };
 
     // The drum: a band a fixed share of its radius, a stripe set rounded to whole device pixels so
     // the loop closes without a seam.
@@ -449,6 +455,77 @@
     collar(ctx, cx, glassBottom + lipH, W, collarH);
     ball(ctx, cx, H - ballR, ballR);
     dome(ctx, cx, bottomDome, W / 2, domeH, false);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // The pole's light on the wall. The glass tube is the lamp, so the light falls off with the
+  // distance from it (a line, not a point) and stretches along it; where it lands it shows the
+  // plaster: a fine grain and a broad, uneven mottle. Painted at half size, once per layout.
+  // ---------------------------------------------------------------------------------------------
+
+  function paintLight() {
+    var p = ui.pole;
+    if (!p.glass) return;
+    var body = p.body.getBoundingClientRect();
+    var crown = p.crown.getBoundingClientRect();
+    var head = ui.top.getBoundingClientRect();
+    var size = [window.innerWidth, window.innerHeight, body.left, body.top, body.width, body.height, crown.left, crown.right].map(Math.round).join('|');
+    if (!body.width || size === ui.lit) return;
+    ui.lit = size;
+
+    ui.top.style.setProperty('--rule-left', Math.max(0, crown.left - head.left) + 'px');
+    ui.top.style.setProperty('--rule-right', Math.max(0, head.right - crown.right) + 'px');
+
+    var scale = 2;
+    var w = Math.ceil(window.innerWidth / scale);
+    var h = Math.ceil(window.innerHeight / scale);
+    var canvas = ui.light;
+    canvas.width = w;
+    canvas.height = h;
+    var ctx = canvas.getContext('2d');
+    var img = ctx.createImageData(w, h);
+    var data = img.data;
+
+    var cx = (body.left + body.width / 2) / scale;
+    var y0 = (body.top + p.glass.top) / scale;
+    var y1 = (body.top + p.glass.bottom) / scale;
+    var reach = window.innerHeight * 0.12 / scale;
+    var reach2 = reach * reach;
+
+    var cell = Math.max(6, Math.round(window.innerHeight * 0.035 / scale));
+    var gw = Math.ceil(w / cell) + 2;
+    var gh = Math.ceil(h / cell) + 2;
+    var grid = [];
+    var i;
+    for (i = 0; i < gw * gh; i += 1) grid.push(Math.random());
+
+    var x, y;
+    for (y = 0; y < h; y += 1) {
+      var dy = y < y0 ? y0 - y : y > y1 ? y - y1 : 0;
+      var gy = y / cell;
+      var iy = Math.floor(gy);
+      var fy = gy - iy;
+      fy = fy * fy * (3 - 2 * fy);
+      for (x = 0; x < w; x += 1) {
+        var dx = x - cx;
+        var light = 1 / (1 + (dx * dx + dy * dy) / reach2);
+        var gx = x / cell;
+        var ix = Math.floor(gx);
+        var fx = gx - ix;
+        fx = fx * fx * (3 - 2 * fx);
+        var row = iy * gw + ix;
+        var top = grid[row] + (grid[row + 1] - grid[row]) * fx;
+        var bottom = grid[row + gw] + (grid[row + gw + 1] - grid[row + gw]) * fx;
+        var mottle = top + (bottom - top) * fy;
+        var plaster = 0.75 + 0.3 * mottle + 0.22 * (Math.random() - 0.5);
+        var k = (y * w + x) * 4;
+        data[k] = 0xf3;
+        data[k + 1] = 0xf1;
+        data[k + 2] = 0xec;
+        data[k + 3] = 255 * 0.2 * light * plaster;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -587,7 +664,9 @@
 
     // The pole turns while anyone still has an appointment or a free time today.
     ui.pole.node.className = open ? 'pole' : 'pole still';
+    ui.light.className = open ? 'light' : 'light off';
     paintPole(ui.pole);
+    paintLight();
 
     Array.prototype.forEach.call(ui.cols.querySelectorAll('.now-name, .poster-name, .place-name'), shrink);
     Array.prototype.forEach.call(ui.cols.querySelectorAll('.line'), fit);
