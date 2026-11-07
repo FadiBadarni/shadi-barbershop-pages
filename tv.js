@@ -1,7 +1,8 @@
 // The shop's TV. It draws the board that public.display_board() returns (supabase/migrations/
 // 20261107100000_shop_displays.sql in the app's repo): the shop, each barber's earliest free time and
-// today's bookings that have not ended. For now it draws sample data; linking a screen and reading
-// the shop's real board come next.
+// today's bookings that have not ended. A screen that is not linked shows a code for the owner to
+// enter in the app; once linked it keeps its key and reads the board every minute. tv.html?sample
+// draws made-up data instead, for looking at the board without a linked screen.
 //
 // Order, never minutes: a cut runs a few minutes early or late, so the board shows whose appointment
 // it is by the schedule and the time each client booked, and never counts down.
@@ -25,7 +26,9 @@
     creditMade: 'تطبيق الحجز من تطوير',
     creditName: 'برايم سيستمز',
     creditLine: 'نبني المواقع والتطبيقات التي يقوم عليها عملك',
-    creditSite: 'prime-systems.co.il'
+    creditSite: 'prime-systems.co.il',
+    pairLead: 'لعرض جدول اليوم هنا، أدخل هذا الرمز في التطبيق: ',
+    pairWhere: 'الحساب ← شاشة المحل'
   };
 
   // The board, the server's clock minus this screen's (screen clocks drift), and when it was read.
@@ -716,6 +719,148 @@
   }
 
   // ---------------------------------------------------------------------------------------------
+  // The live board: the screen is linked to the shop once, then reads the board every minute
+  // ---------------------------------------------------------------------------------------------
+
+  // The shared backend and its publishable key, as in the app (packages/app/src/supabase.ts). Both
+  // are public by design: the key reaches only what the database grants to anyone.
+  var API = 'https://qlghtmjkisyocykzzsqh.supabase.co/rest/v1/rpc/';
+  var PUBLISHABLE_KEY = 'sb_publishable_mR-J_WnwL59Wvlv1TXFWsQ_0FBB3Yd4';
+  // Where the screen keeps its key, which reads its shop's board and nothing else.
+  var KEY_STORE = 'shop-tv-key';
+
+  // Calls a database function. done(error, result): error is the function's message code (such as
+  // display_unknown), 'offline' when the network fails, or null.
+  function rpc(name, args, done) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', API + name, true);
+    xhr.setRequestHeader('apikey', PUBLISHABLE_KEY);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.timeout = 20 * 1000;
+    xhr.onload = function () {
+      var body = null;
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch (e) {
+        body = null;
+      }
+      if (xhr.status >= 200 && xhr.status < 300) done(null, body);
+      else done(body && body.message ? body.message : 'failed', null);
+    };
+    xhr.onerror = function () { done('offline', null); };
+    xhr.ontimeout = function () { done('offline', null); };
+    xhr.send(JSON.stringify(args));
+  }
+
+  // A browser that keeps nothing links again each time the page opens.
+  function storedKey() {
+    try {
+      return window.localStorage.getItem(KEY_STORE);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function storeKey(key) {
+    try {
+      if (key) window.localStorage.setItem(KEY_STORE, key);
+      else window.localStorage.removeItem(KEY_STORE);
+    } catch (e) {}
+  }
+
+  // The screen before it is linked: the shop's razor, the code in two groups of three, and where the
+  // owner enters it. Built the first time it is needed.
+  var pairing = null;
+
+  function showPairing(on) {
+    if (on && !pairing) {
+      var root = el('section', 'pair');
+      root.appendChild(image('shop-mark.png', 'pair-mark'));
+      var code = el('div', 'pair-code num');
+      var first = el('span');
+      var second = el('span');
+      code.appendChild(first);
+      code.appendChild(second);
+      root.appendChild(code);
+      var line = el('p', 'pair-line', COPY.pairLead);
+      line.appendChild(el('strong', '', COPY.pairWhere));
+      root.appendChild(line);
+      document.body.appendChild(root);
+      pairing = { first: first, second: second };
+    }
+    document.body.className = on ? 'pairing' : '';
+  }
+
+  function showCode(code) {
+    pairing.first.textContent = code.slice(0, 3);
+    pairing.second.textContent = code.slice(3);
+  }
+
+  // Each change between linking and linked starts a new run; a reply that arrives for an older run
+  // is dropped, so two loops never run at once.
+  var run = 0;
+
+  function begin() {
+    var key = storedKey();
+    if (key) readBoard(key, ++run);
+    else link(++run);
+  }
+
+  // Not linked: a new code, then every few seconds the question whether the owner has entered it.
+  // A code lasts ten minutes; when it has run out the screen shows a new one.
+  function link(mine) {
+    showPairing(true);
+    showCode('');
+    rpc('start_display_pairing', {}, function (error, rows) {
+      if (mine !== run) return;
+      var started = !error && rows && rows[0];
+      if (!started) {
+        setTimeout(function () { if (mine === run) link(mine); }, (error === 'busy' ? 60 : 10) * 1000);
+        return;
+      }
+      showCode(started.code);
+      claim(started.secret, mine);
+    });
+  }
+
+  function claim(secret, mine) {
+    setTimeout(function () {
+      if (mine !== run) return;
+      rpc('claim_display', { p_secret: secret }, function (error, key) {
+        if (mine !== run) return;
+        if (error === 'pairing_expired') {
+          link(mine);
+        } else if (!error && key) {
+          storeKey(key);
+          readBoard(key, ++run);
+        } else {
+          claim(secret, mine);
+        }
+      });
+    }, 3 * 1000);
+  }
+
+  // Linked: the board now, then every minute. A screen the owner has disconnected forgets its key and
+  // shows a code again. When the network fails the last board stays up and, after three minutes,
+  // says how old it is; until a first board arrives, the screen asks again every ten seconds.
+  function readBoard(key, mine) {
+    rpc('display_board', { p_key: key }, function (error, next) {
+      if (mine !== run) return;
+      if (error === 'display_unknown') {
+        storeKey(null);
+        board = null;
+        link(++run);
+        return;
+      }
+      if (!error && next) {
+        showPairing(false);
+        show(next);
+      }
+      setTimeout(function () { if (mine === run) readBoard(key, mine); }, board ? MINUTE : 10 * 1000);
+    });
+  }
+
+  // ---------------------------------------------------------------------------------------------
   // The screen: awake, full screen on OK, redrawn every few seconds
   // ---------------------------------------------------------------------------------------------
 
@@ -747,8 +892,12 @@
   window.addEventListener('resize', relayout);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(relayout);
 
-  show(sampleBoard());
   keepAwake();
   setInterval(draw, 10 * 1000);
-  setInterval(function () { show(sampleBoard()); }, 60 * 1000);
+  if (/[?&]sample\b/.test(window.location.search)) {
+    show(sampleBoard());
+    setInterval(function () { show(sampleBoard()); }, MINUTE);
+  } else {
+    begin();
+  }
 })();

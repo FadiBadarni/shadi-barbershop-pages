@@ -512,3 +512,57 @@ body {
   font-weight: 700;
   color: var(--chalk);
 }
+
+/* A screen that is not linked yet: the shop's razor, the code the owner enters in the app, and
+   where to enter it. tv.js shows it until the screen holds a key. */
+
+.pair {
+  display: none;
+  height: 100vh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8vw;
+  text-align: center;
+}
+
+body.pairing .pair {
+  display: flex;
+}
+
+body.pairing .board,
+body.pairing .light {
+  display: none;
+}
+
+.pair-mark {
+  width: 14rem;
+  height: 14rem;
+}
+
+/* Two groups of three, read left to right on the right-to-left page. */
+.pair-code {
+  display: flex;
+  direction: ltr;
+  min-height: 1em;
+  margin-top: 5rem;
+  font-size: 24rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.pair-code span + span {
+  margin-left: 0.45em;
+}
+
+.pair-line {
+  margin-top: 7rem;
+  font-size: 4.4rem;
+  line-height: 1.5;
+  color: var(--ash);
+}
+
+.pair-line strong {
+  font-weight: 700;
+  color: var(--chalk);
+}
