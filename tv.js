@@ -689,24 +689,20 @@
     }
     return {
       now: new Date().toISOString(),
-      shop: { name: 'محلقة شادي', time_zone: 'Asia/Jerusalem' },
+      shop: { name: 'صالون شادي', time_zone: 'Asia/Jerusalem' },
       barbers: [
-        { id: 'shadi', name: 'شادي', next_free: at(9) },
-        { id: 'amir', name: 'أمير', next_free: at(0) }
+        { id: 'shadi', name: 'شادي', next_free: at(9) }
       ],
       bookings: [
         booking('shadi', 0, 'محمد خطيب'),
-        booking('shadi', 1, 'يوسف حداد'),
+        booking('shadi', 1, 'خالد يونس'),
         booking('shadi', 2, 'كريم منصور'),
         booking('shadi', 3, 'عبد الرحمن عودة'),
         booking('shadi', 4, 'باسل نصار'),
         booking('shadi', 5, 'علي حسن'),
         booking('shadi', 6, 'عمر سليمان'),
         booking('shadi', 7, 'طارق عيسى'),
-        booking('shadi', 8, 'رامي خوري'),
-        booking('amir', 2, 'أحمد زعبي'),
-        booking('amir', 4, 'وسيم شحادة'),
-        booking('amir', 5, 'نزار عمري')
+        booking('shadi', 8, 'رامي خوري')
       ]
     };
   }
