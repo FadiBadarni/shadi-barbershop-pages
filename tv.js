@@ -156,11 +156,13 @@
   }
 
   // One column per barber, the pole standing after the first half of them: between the two when
-  // there are two.
+  // there are two. A lone barber's pole stands at the edge, under the clock, so it is marked: its
+  // crown then stays on the pole instead of rising into the header (tv.css).
   function layColumns() {
     var key = board.barbers.map(function (b) { return b.id; }).join('|');
     if (key === ui.barbers) return;
     ui.barbers = key;
+    ui.cols.classList.toggle('lone', board.barbers.length < 2);
     ui.cols.textContent = '';
     ui.columns = {};
     var poleAfter = Math.ceil(board.barbers.length / 2) - 1;
@@ -477,8 +479,10 @@
     if (!body.width || size === ui.lit) return;
     ui.lit = size;
 
-    ui.top.style.setProperty('--rule-left', Math.max(0, crown.left - head.left) + 'px');
-    ui.top.style.setProperty('--rule-right', Math.max(0, head.right - crown.right) + 'px');
+    // The header's rule breaks around the crown only where the crown rises through it.
+    var through = crown.top < head.bottom;
+    ui.top.style.setProperty('--rule-left', through ? Math.max(0, crown.left - head.left) + 'px' : '100%');
+    ui.top.style.setProperty('--rule-right', through ? Math.max(0, head.right - crown.right) + 'px' : '0');
 
     var scale = 2;
     var w = Math.ceil(window.innerWidth / scale);

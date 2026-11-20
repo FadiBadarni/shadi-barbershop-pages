@@ -206,6 +206,12 @@ body {
   padding: 0 1.6rem 0.8rem;
 }
 
+/* A lone barber's pole stands at the edge, under the clock: its crown stays on the pole, below the
+   header, and the header's rule runs whole. */
+.cols.lone .pole-crown {
+  margin-top: 0;
+}
+
 .pole-body {
   position: relative;
   flex: 1;
